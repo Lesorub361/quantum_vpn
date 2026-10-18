@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:openvpn_flutter/openvpn_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/vpn_server.dart';
 
 enum VpnConnectionStatus {
@@ -125,7 +126,7 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     _appendLog('[Android VPN] Статус: $rawStage\n');
     switch (stage) {
       case VPNStage.connected:
-        _appendLog('[QuantumVPN] 🟢 Системный VPN туннель активен (${state.activeServer?.countryLong ?? ''})! Весь трафик устройства защищен.\n');
+        _appendLog('[QuantumVPN] 🟢 Системный VPN туннель активен (${state.activeServer?.countryLong ?? ''})! Трафик и DNS защищены.\n');
         state = state.copyWith(status: VpnConnectionStatus.connected);
         _startSessionTracking();
         break;
@@ -202,6 +203,48 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     );
   }
 
+  /// Builds optimized OpenVPN configuration injecting full tunnel routing and DNS leak protection
+  Future<({String config, List<String> dnsIps})> _buildOptimizedConfig(String rawConfig) async {
+    final prefs = await SharedPreferences.getInstance();
+    final selectedDns = prefs.getString('vpn_dns') ?? '143.20.64.55 (Bezmezhau SmartDNS / DoT: dns.bezmezhau.com)';
+    final dnsIps = _getDnsIps(selectedDns);
+
+    final sb = StringBuffer();
+    sb.writeln(rawConfig.trim());
+    sb.writeln();
+    sb.writeln('# === QuantumVPN Routing & Anti-DNS-Leak Directives ===');
+    // Ensure 100% of network traffic routes through the VPN tunnel
+    if (!rawConfig.contains('redirect-gateway')) {
+      sb.writeln('redirect-gateway def1');
+    }
+    // Inject custom/foreign DNS servers
+    for (final ip in dnsIps) {
+      sb.writeln('dhcp-option DNS $ip');
+    }
+    // Block DNS leaks outside tunnel
+    sb.writeln('block-outside-dns');
+    sb.writeln('keepalive 10 30');
+    sb.writeln();
+
+    return (config: sb.toString(), dnsIps: dnsIps);
+  }
+
+  List<String> _getDnsIps(String dnsKey) {
+    if (dnsKey.contains('143.20.64.55') || dnsKey.contains('Bezmezhau') || dnsKey.contains('bezmezhau')) {
+      return ['143.20.64.55', '31.58.216.201'];
+    } else if (dnsKey.contains('111.88.96.50') || dnsKey.contains('SmartDNS') || dnsKey.contains('xbox-dns')) {
+      return ['111.88.96.50', '111.88.96.51'];
+    } else if (dnsKey.contains('8.8.8.8')) {
+      return ['8.8.8.8', '8.8.4.4'];
+    } else if (dnsKey.contains('9.9.9.9')) {
+      return ['9.9.9.9', '149.112.112.112'];
+    } else if (dnsKey.contains('94.140.14.14')) {
+      return ['94.140.14.14', '94.140.15.15'];
+    }
+    // Default: Bezmezhau
+    return ['143.20.64.55', '31.58.216.201'];
+  }
+
   /// Connect to chosen VPN server
   Future<void> connect(VpnServer server) async {
     if (state.status == VpnConnectionStatus.connecting || state.status == VpnConnectionStatus.connected) {
@@ -219,23 +262,26 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     );
 
     try {
-      final configContent = server.ovpnConfigRaw;
-      if (configContent.isEmpty) {
+      final rawConfig = server.ovpnConfigRaw;
+      if (rawConfig.isEmpty) {
         throw Exception('Не удалось декодировать файл конфигурации OpenVPN.');
       }
+
+      final optimized = await _buildOptimizedConfig(rawConfig);
+      _appendLog('[QuantumVPN] 🛡️ Защита DNS: активны серверы ${optimized.dnsIps.join(", ")}\n');
 
       // Write config to local file
       final tempDir = await getTemporaryDirectory();
       final configFile = File(p.join(tempDir.path, 'quantum_vpn_${server.hostName}.ovpn'));
-      await configFile.writeAsString(configContent);
+      await configFile.writeAsString(optimized.config);
 
       state = state.copyWith(activeConfigFile: configFile.path);
       _appendLog('[QuantumVPN] Конфигурация сохранена: ${configFile.path}\n');
 
       if (Platform.isLinux) {
-        await _connectLinux(configFile.path, server);
+        await _connectLinux(configFile.path, server, optimized.dnsIps);
       } else {
-        await _connectMobile(server);
+        await _connectMobile(server, optimized.config);
       }
     } catch (e) {
       _appendLog('[QuantumVPN] Ошибка подключения: $e\n');
@@ -247,13 +293,13 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     }
   }
 
-  Future<void> _connectMobile(VpnServer server) async {
-    _appendLog('[QuantumVPN] Активация Android VpnService для маршрутизации трафика...\n');
+  Future<void> _connectMobile(VpnServer server, String optimizedConfig) async {
+    _appendLog('[QuantumVPN] Активация Android VpnService (полное туннелирование + DNS)...\n');
     if (_openvpn == null) {
       _initOpenVPN();
     }
 
-    String config = server.ovpnConfigRaw;
+    String config = optimizedConfig;
     if (!config.endsWith('\n')) {
       config += '\n';
     }
@@ -270,7 +316,7 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     );
   }
 
-  Future<void> _connectLinux(String configPath, VpnServer server) async {
+  Future<void> _connectLinux(String configPath, VpnServer server, List<String> dnsIps) async {
     _appendLog('[QuantumVPN] Запуск OpenVPN на Linux...\n');
 
     try {
@@ -303,12 +349,13 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
       _stdoutSub = _openvpnProcess!.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
-          .listen((line) {
+          .listen((line) async {
         _appendLog('[OpenVPN] $line\n');
         if (line.contains('Initialization Sequence Completed')) {
           _connectionTimeoutTimer?.cancel();
           _connectionTimeoutTimer = null;
           _appendLog('[QuantumVPN] 🟢 Успешно подключено к VPN (${server.countryLong})!\n');
+          await _applyLinuxDns(dnsIps);
           state = state.copyWith(status: VpnConnectionStatus.connected);
           _startSessionTracking();
         } else if (line.contains('No route to host') || line.contains('Connection refused')) {
@@ -323,10 +370,11 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
         _appendLog('[OpenVPN STDERR] $line\n');
       });
 
-      _openvpnProcess!.exitCode.then((code) {
+      _openvpnProcess!.exitCode.then((code) async {
         _appendLog('[QuantumVPN] Процесс OpenVPN завершился с кодом $code.\n');
         _connectionTimeoutTimer?.cancel();
         _connectionTimeoutTimer = null;
+        await _restoreLinuxDns();
         if (state.status == VpnConnectionStatus.connected ||
             state.status == VpnConnectionStatus.connecting) {
           state = state.copyWith(
@@ -352,6 +400,53 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     } catch (e) {
       rethrow;
     }
+  }
+
+  Future<void> _applyLinuxDns(List<String> dnsIps) async {
+    try {
+      final resolvFile = File('/etc/resolv.conf');
+      final backupFile = File('/tmp/resolv.conf.quantum_backup');
+      if (await resolvFile.exists() && !await backupFile.exists()) {
+        final currentContent = await resolvFile.readAsString();
+        await backupFile.writeAsString(currentContent);
+      }
+
+      final isRoot = (Platform.environment['USER'] == 'root');
+      final newContent = StringBuffer();
+      newContent.writeln('# Generated by QuantumVPN Anti-DNS-Leak Protection');
+      for (final ip in dnsIps) {
+        newContent.writeln('nameserver $ip');
+      }
+      newContent.writeln('options timeout:2');
+
+      if (isRoot) {
+        await resolvFile.writeAsString(newContent.toString());
+      } else {
+        final tmpNew = File('/tmp/resolv.conf.quantum_new');
+        await tmpNew.writeAsString(newContent.toString());
+        await Process.run('pkexec', ['cp', '/tmp/resolv.conf.quantum_new', '/etc/resolv.conf']);
+      }
+      _appendLog('[QuantumVPN] 🛡️ DNS настроен: ${dnsIps.join(", ")} (Защита от утечек активна)\n');
+    } catch (e) {
+      _appendLog('[QuantumVPN] Замечание по DNS: $e\n');
+    }
+  }
+
+  Future<void> _restoreLinuxDns() async {
+    try {
+      final backupFile = File('/tmp/resolv.conf.quantum_backup');
+      final resolvFile = File('/etc/resolv.conf');
+      if (await backupFile.exists()) {
+        final isRoot = (Platform.environment['USER'] == 'root');
+        if (isRoot) {
+          await backupFile.copy(resolvFile.path);
+        } else {
+          await Process.run('pkexec', ['cp', '/tmp/resolv.conf.quantum_backup', '/etc/resolv.conf']);
+        }
+        await backupFile.delete();
+        _appendLog('[QuantumVPN] Системный DNS восстановлен.\n');
+      }
+    } catch (_) {}
   }
 
   void _startSessionTracking() {
@@ -439,6 +534,8 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     _stdoutSub = null;
     await _stderrSub?.cancel();
     _stderrSub = null;
+
+    await _restoreLinuxDns();
 
     if (!Platform.isLinux && _openvpn != null) {
       try {

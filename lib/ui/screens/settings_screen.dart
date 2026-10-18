@@ -14,7 +14,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _killSwitch = true;
   bool _autoReconnect = true;
-  String _selectedDns = '1.1.1.1 (Cloudflare)';
+  String _selectedDns = '143.20.64.55 (Bezmezhau SmartDNS / DoT: dns.bezmezhau.com)';
 
   @override
   void initState() {
@@ -27,7 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _killSwitch = prefs.getBool('vpn_kill_switch') ?? true;
       _autoReconnect = prefs.getBool('vpn_auto_reconnect') ?? true;
-      _selectedDns = prefs.getString('vpn_dns') ?? '1.1.1.1 (Cloudflare)';
+      _selectedDns = prefs.getString('vpn_dns') ?? '143.20.64.55 (Bezmezhau SmartDNS / DoT: dns.bezmezhau.com)';
     });
   }
 
@@ -105,6 +105,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 8),
               ...[
+                '143.20.64.55 (Bezmezhau SmartDNS / DoT: dns.bezmezhau.com)',
+                '111.88.96.50 (SmartDNS Antigravity / xbox-dns)',
                 '1.1.1.1 (Cloudflare)',
                 '8.8.8.8 (Google Public DNS)',
                 '9.9.9.9 (Quad9 Security)',
@@ -126,6 +128,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 );
               }),
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: QuantumVpnTheme.primaryCyan.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: QuantumVpnTheme.primaryCyan.withValues(alpha: 0.25)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(LucideIcons.sparkles, color: QuantumVpnTheme.primaryCyan, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Bezmezhau SmartDNS (Рекомендуется)',
+                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: QuantumVpnTheme.primaryCyan),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Специальный DNS-резолвер для обхода блокировок Google AI, Gemini, Antigravity IDE и стримингов без падения скорости.\n'
+                      '• Основной IPv4: 143.20.64.55\n'
+                      '• Дополнительный IPv4: 31.58.216.201\n'
+                      '• Android Private DNS (DoT): dns.bezmezhau.com\n'
+                      '• DoH: https://dns.bezmezhau.com/dns-query',
+                      style: GoogleFonts.jetBrainsMono(fontSize: 10, color: Colors.white70, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
 
