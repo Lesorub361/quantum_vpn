@@ -356,22 +356,32 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
         throw Exception('Утилита openvpn не найдена в системе. Пожалуйста, выполните: sudo apt install openvpn');
       }
 
-      // Create credentials file for automated login
-      final authFile = File('/tmp/quantum_auth.txt');
-      final u = server.username ?? 'vpn';
-      final p = server.password ?? 'vpn';
-      await authFile.writeAsString('$u\n$p\n');
-      try {
-        await Process.run('chmod', ['644', authFile.path]);
-      } catch (_) {}
+      // Check if credentials are required (VPN Gate, VPNBook) or if using client certificates (Riseup)
+      final configContent = await File(configPath).readAsString();
+      final hasCredentials = server.username != null || server.password != null;
+      final configRequestsAuth = configContent.contains('auth-user-pass');
+
+      final List<String> authArgs = [];
+      if (hasCredentials || configRequestsAuth) {
+        final authFile = File('/tmp/quantum_auth.txt');
+        final u = server.username ?? 'vpn';
+        final p = server.password ?? 'vpn';
+        await authFile.writeAsString('$u\n$p\n');
+        try {
+          await Process.run('chmod', ['644', authFile.path]);
+        } catch (_) {}
+        authArgs.addAll([
+          '--auth-user-pass', authFile.path,
+          '--auth-nocache',
+          '--auth-retry', 'nointeract',
+        ]);
+      }
 
       // Check if pkexec or sudo is needed
       final isRoot = (Platform.environment['USER'] == 'root');
       List<String> commandArgs = [
         '--config', configPath,
-        '--auth-user-pass', authFile.path,
-        '--auth-nocache',
-        '--auth-retry', 'nointeract',
+        ...authArgs,
         '--writepid', '/tmp/quantum_openvpn.pid',
         '--management', '127.0.0.1', '11955',
         '--script-security', '2',

@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import '../../services/vpn_gate_service.dart';
 import '../../services/vpn_connection_service.dart';
 import '../../services/vpnbook_service.dart';
+import '../../services/riseup_vpn_service.dart';
 import '../../services/speedtest_service.dart';
 import '../widgets/country_flag_widget.dart';
 import 'speedtest_screen.dart';
@@ -27,6 +28,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
   final TextEditingController _searchController = TextEditingController();
   final Map<String, int?> _testedPings = {};
   final Set<String> _testingHosts = {};
+  bool _onlyTurbo = false;
 
   Future<void> _testServerLatency(String host, int port) async {
     setState(() => _testingHosts.add(host));
@@ -117,17 +119,54 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     }
   }
 
+  Future<void> _downloadRiseupConfig(RiseupServerItem server, String protocol) async {
+    try {
+      final notifier = ref.read(riseupVpnProvider.notifier);
+      final config = await notifier.fetchOvpnConfig(server, protocol: protocol);
+      
+      final tempDir = await getTemporaryDirectory();
+      final file = File(p.join(tempDir.path, '${server.hostname}_$protocol.ovpn'));
+      await file.writeAsString(config);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Конфигурация сохранена: ${file.path}'),
+            backgroundColor: QuantumVpnTheme.surface,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Скопировать путь',
+              textColor: QuantumVpnTheme.primaryCyan,
+              onPressed: () => _copyToClipboard(file.path, 'Путь к файлу'),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка скачивания: $e'),
+            backgroundColor: QuantumVpnTheme.dangerRed,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final gateState = ref.watch(vpnGateProvider);
     final gateNotifier = ref.read(vpnGateProvider.notifier);
+    final riseupState = ref.watch(riseupVpnProvider);
+    final riseupNotifier = ref.read(riseupVpnProvider.notifier);
     final vpnBookState = ref.watch(vpnBookProvider);
     final vpnBookNotifier = ref.read(vpnBookProvider.notifier);
     final connState = ref.watch(vpnConnectionProvider);
     final connNotifier = ref.read(vpnConnectionProvider.notifier);
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Бесплатные VPN Серверы'),
@@ -150,14 +189,18 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                 ),
                 labelColor: QuantumVpnTheme.primaryCyan,
                 unselectedLabelColor: Colors.white60,
-                labelStyle: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                labelStyle: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
                 tabs: [
                   Tab(
-                    icon: const Icon(LucideIcons.globe, size: 16),
+                    icon: const Icon(LucideIcons.globe, size: 15),
                     text: 'VPN Gate (${gateState.servers.length})',
                   ),
                   Tab(
-                    icon: const Icon(LucideIcons.book_open, size: 16),
+                    icon: const Icon(LucideIcons.zap, size: 15, color: QuantumVpnTheme.accentNeon),
+                    text: 'Riseup (${riseupState.servers.length})',
+                  ),
+                  Tab(
+                    icon: const Icon(LucideIcons.book_open, size: 15),
                     text: 'VPNBook (${vpnBookState.servers.length})',
                   ),
                 ],
@@ -175,7 +218,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               },
             ),
             IconButton(
-              icon: gateState.isLoading
+              icon: (gateState.isLoading || riseupState.isLoading)
                   ? const SizedBox(
                       width: 18,
                       height: 18,
@@ -185,6 +228,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               tooltip: 'Обновить',
               onPressed: () {
                 gateNotifier.refreshServers();
+                riseupNotifier.fetchLiveGateways();
                 vpnBookNotifier.fetchLatestCredentials();
               },
             ),
@@ -195,7 +239,10 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
             // ── Tab 1: VPN Gate ──────────────────────────────────────────────
             _buildVpnGateTab(gateState, gateNotifier, connState, connNotifier),
 
-            // ── Tab 2: VPNBook ───────────────────────────────────────────────
+            // ── Tab 2: Riseup VPN ────────────────────────────────────────────
+            _buildRiseupTab(riseupState, riseupNotifier, connState, connNotifier),
+
+            // ── Tab 3: VPNBook ───────────────────────────────────────────────
             _buildVpnBookTab(vpnBookState, vpnBookNotifier, connState, connNotifier),
           ],
         ),
@@ -209,7 +256,10 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     VpnConnectionState connState,
     VpnConnectionNotifier connNotifier,
   ) {
-    final filteredServers = gateState.filteredServers;
+    var filteredServers = gateState.filteredServers;
+    if (_onlyTurbo) {
+      filteredServers = filteredServers.where((s) => (s.speedBps / 1000000) >= 50.0).toList();
+    }
     final countries = gateState.availableCountries;
 
     return Column(
@@ -276,13 +326,32 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
           ),
         ),
 
-        // Country Filter Chips
+        // Country & Speed Filter Chips
         SizedBox(
           height: 38,
           child: ListView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  avatar: const Icon(LucideIcons.zap, size: 13, color: QuantumVpnTheme.accentNeon),
+                  label: const Text('🚀 Турбо (>50 Мб/с)', style: TextStyle(fontSize: 11)),
+                  selected: _onlyTurbo,
+                  selectedColor: QuantumVpnTheme.accentNeon,
+                  labelStyle: TextStyle(
+                    color: _onlyTurbo ? Colors.black : Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  backgroundColor: QuantumVpnTheme.card,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  side: BorderSide(
+                    color: _onlyTurbo ? QuantumVpnTheme.accentNeon : QuantumVpnTheme.cardBorder,
+                  ),
+                  onSelected: (val) => setState(() => _onlyTurbo = val),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: FilterChip(
@@ -528,6 +597,278 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                       },
                     ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildRiseupTab(
+    RiseupVpnState riseupState,
+    RiseupVpnNotifier riseupNotifier,
+    VpnConnectionState connState,
+    VpnConnectionNotifier connNotifier,
+  ) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // ── Riseup Networks Info Card ────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: QuantumVpnTheme.card,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: QuantumVpnTheme.accentNeon.withValues(alpha: 0.35)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: QuantumVpnTheme.accentNeon.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(LucideIcons.shield_check, color: QuantumVpnTheme.accentNeon, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Riseup Networks · LEAP VPN',
+                              style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: QuantumVpnTheme.accentNeon.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text('150+ Мбит/с', style: TextStyle(fontSize: 9, color: QuantumVpnTheme.accentNeon, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Европа и США · Без логинов и паролей · Анонимный SSL',
+                          style: TextStyle(fontSize: 11, color: Colors.white60),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: riseupState.isLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: QuantumVpnTheme.accentNeon),
+                          )
+                        : const Icon(LucideIcons.refresh_cw, size: 16, color: QuantumVpnTheme.accentNeon),
+                    tooltip: 'Обновить сертификат и серверы',
+                    onPressed: riseupState.isLoading ? null : () => riseupNotifier.fetchClientCertificate(forceRefresh: true),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: QuantumVpnTheme.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: QuantumVpnTheme.cardBorder),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      riseupState.hasCertificate ? LucideIcons.circle_check : LucideIcons.key_round,
+                      size: 14,
+                      color: riseupState.hasCertificate ? QuantumVpnTheme.successGreen : Colors.amberAccent,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        riseupState.statusMessage ??
+                            (riseupState.hasCertificate
+                                ? 'Анонимный SSL-сертификат активен (Вход без пароля)'
+                                : 'Сертификат создастся автоматически при подключении'),
+                        style: GoogleFonts.inter(fontSize: 11, color: Colors.white70),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'ПРОТОКОЛ И ПОРТ',
+                style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white38),
+              ),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _protocolChip('udp1194', '⚡ UDP 1194 (Макс. Скорость)', riseupState.selectedProtocol, (p) => riseupNotifier.setProtocol(p)),
+                    const SizedBox(width: 6),
+                    _protocolChip('udp53', '🛡 UDP 53 (DNS / Обход)', riseupState.selectedProtocol, (p) => riseupNotifier.setProtocol(p)),
+                    const SizedBox(width: 6),
+                    _protocolChip('tcp443', '🔒 TCP 443 (HTTPS)', riseupState.selectedProtocol, (p) => riseupNotifier.setProtocol(p)),
+                    const SizedBox(width: 6),
+                    _protocolChip('tcp80', '🌐 TCP 80 (HTTP)', riseupState.selectedProtocol, (p) => riseupNotifier.setProtocol(p)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        // ── Servers List ──────────────────────────────────────────────────────
+        Text(
+          'ДОСТУПНЫЕ СЕРВЕРЫ (${riseupState.servers.length})',
+          style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: Colors.white54),
+        ),
+        const SizedBox(height: 8),
+
+        ...riseupState.servers.map((server) {
+          final isConnected = connState.isConnected && connState.activeServer?.hostName == server.hostname;
+          final isConnecting = connState.isConnecting && connState.activeServer?.hostName == server.hostname;
+
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            color: QuantumVpnTheme.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: isConnected
+                    ? QuantumVpnTheme.successGreen
+                    : isConnecting
+                        ? QuantumVpnTheme.accentNeon
+                        : QuantumVpnTheme.cardBorder,
+                width: isConnected || isConnecting ? 1.5 : 1,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  CountryFlagWidget(countryCode: server.countryShort, width: 34, height: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          server.countryLong,
+                          style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          server.hostname,
+                          style: GoogleFonts.jetBrainsMono(fontSize: 10, color: Colors.white54),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            _badge(LucideIcons.zap, '${server.speedMbps.toStringAsFixed(0)} Mbps', QuantumVpnTheme.accentNeon),
+                            _badge(LucideIcons.activity, '${server.ping} ms', QuantumVpnTheme.successGreen),
+                            _badge(LucideIcons.shield, 'Zero-Logs', Colors.white70),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Download button
+                  IconButton(
+                    icon: const Icon(LucideIcons.download, size: 16, color: Colors.white60),
+                    tooltip: 'Скачать .ovpn файл',
+                    onPressed: () => _downloadRiseupConfig(server, riseupState.selectedProtocol),
+                  ),
+                  const SizedBox(width: 4),
+                  OutlinedButton(
+                    onPressed: _testingHosts.contains(server.hostname)
+                        ? null
+                        : () => _testServerLatency(server.hostname, 443),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: _testedPings.containsKey(server.hostname)
+                            ? QuantumVpnTheme.accentNeon
+                            : QuantumVpnTheme.cardBorder,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: _testingHosts.contains(server.hostname)
+                        ? const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: QuantumVpnTheme.accentNeon),
+                          )
+                        : Text(
+                            _testedPings.containsKey(server.hostname) && _testedPings[server.hostname] != null
+                                ? '${_testedPings[server.hostname]}ms'
+                                : 'Тест',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: _testedPings.containsKey(server.hostname)
+                                  ? QuantumVpnTheme.accentNeon
+                                  : Colors.white70,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 6),
+                  ElevatedButton(
+                    onPressed: () async {
+                      if (isConnected) {
+                        await connNotifier.disconnect();
+                      } else {
+                        try {
+                          final vpnServer = await riseupNotifier.getVpnServer(server);
+                          await connNotifier.connect(vpnServer);
+                          widget.onConnectedNav();
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Ошибка подключения к Riseup: $e'),
+                                backgroundColor: QuantumVpnTheme.dangerRed,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isConnected ? QuantumVpnTheme.dangerRed : QuantumVpnTheme.accentNeon,
+                      foregroundColor: isConnected ? Colors.white : Colors.black,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: Text(
+                      isConnected
+                          ? 'Отключить'
+                          : isConnecting
+                              ? 'Связь...'
+                              : 'Подключить',
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
       ],
     );
   }
