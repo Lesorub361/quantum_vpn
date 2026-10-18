@@ -1,0 +1,123 @@
+name: Build & Release QuantumVPN
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux Desktop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev openvpn
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.9'
+          cache: true
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Linux Desktop
+        run: |
+          flutter build linux --release
+          cd build/linux/x64/release/bundle
+          tar -czvf /tmp/quantum-vpn-linux-x64.tar.gz *
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quantum-vpn-linux-x64
+          path: /tmp/quantum-vpn-linux-x64.tar.gz
+          retention-days: 14
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.9'
+          cache: true
+
+      - name: Get Dependencies
+        run: flutter pub get
+
+      - name: Build Android Release APK
+        run: |
+          flutter build apk --release --split-per-abi --no-tree-shake-icons
+          flutter build apk --release --no-tree-shake-icons
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/quantum-vpn-universal-release.apk
+
+      - name: Upload Android Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: quantum-vpn-android-apks
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 14
+
+  release:
+    name: Create GitHub Release
+    needs: [build-linux, build-android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: quantum-vpn-linux-x64
+          path: release-assets/
+
+      - name: Download Android Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: quantum-vpn-android-apks
+          path: release-assets/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: QuantumVPN ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body: |
+            ## 🛡️ QuantumVPN ${{ github.ref_name }} - Free OpenVPN Client for Linux & Mobile
+
+            ### 🚀 Возможности:
+            - **Бесплатные VPN серверы по всему миру**: Прямая интеграция с академической сетью VPN Gate (Университет Цукуба, Япония).
+            - **Индикаторы скорости и пинга**: Отображение реальной пропускной способности (Мбит/с), задержки (мс), флагов стран и числа пользователей.
+            - **Быстрое подключение в 1 клик**: Автоматический выбор самого быстрого сервера.
+            - **Поддержка Linux Desktop & Android**:
+              - Linux: Прямое поднятие туннеля через нативный OpenVPN процесс и интерфейс `tun`.
+              - Android: Экспорт и генерация готовых `.ovpn` профилей.
+            - **Мониторинг трафика в реальном времени**: Живой счетчик скорости скачивания/отдачи и таймер сессии.
+            - **Kill Switch & DNS Leak Protection**: Встроенный аварийный выключатель и поддержка Cloudflare 1.1.1.1, Google 8.8.8.8, AdGuard.
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
