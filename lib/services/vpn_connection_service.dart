@@ -100,9 +100,28 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
   int _lastBytesOut = 0;
 
   VpnConnectionNotifier() : super(const VpnConnectionState()) {
-    if (!Platform.isLinux) {
+    if (Platform.isLinux) {
+      _autoRepairStaleNetwork();
+    } else {
       _initOpenVPN();
     }
+  }
+
+  Future<void> _autoRepairStaleNetwork() async {
+    try {
+      final backup = File('/tmp/resolv.conf.quantum_backup');
+      if (await backup.exists()) {
+        await _restoreLinuxDns();
+      }
+      final resolv = File('/etc/resolv.conf');
+      if (await resolv.exists()) {
+        final content = await resolv.readAsString();
+        if (content.contains('QuantumVPN')) {
+          await _restoreLinuxDns();
+        }
+      }
+      await Process.run('pkill', ['-9', '-f', 'openvpn']);
+    } catch (_) {}
   }
 
   void _initOpenVPN() {
@@ -308,11 +327,14 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
 
     final hasCert = config.contains('<cert>');
 
+    final user = server.username ?? 'vpn';
+    final pass = server.password ?? 'vpn';
+
     await _openvpn!.connect(
       config,
       server.countryLong.isNotEmpty ? server.countryLong : server.ip,
-      username: 'vpn',
-      password: 'vpn',
+      username: user,
+      password: pass,
       certIsRequired: hasCert,
       bypassPackages: [],
     );
@@ -329,10 +351,23 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
         throw Exception('Утилита openvpn не найдена в системе. Пожалуйста, выполните: sudo apt install openvpn');
       }
 
+      // Create credentials file for automated login
+      final authFile = File('/tmp/quantum_auth.txt');
+      final u = server.username ?? 'vpn';
+      final p = server.password ?? 'vpn';
+      await authFile.writeAsString('$u\n$p\n');
+      try {
+        await Process.run('chmod', ['600', authFile.path]);
+      } catch (_) {}
+
       // Check if pkexec or sudo is needed
       final isRoot = (Platform.environment['USER'] == 'root');
       List<String> commandArgs = [
         '--config', configPath,
+        '--auth-user-pass', authFile.path,
+        '--auth-retry', 'nointeract',
+        '--writepid', '/tmp/quantum_openvpn.pid',
+        '--management', '127.0.0.1', '11955',
         '--script-security', '2',
         '--connect-retry-max', '2',
         '--connect-timeout', '8',
@@ -410,7 +445,9 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
       final backupFile = File('/tmp/resolv.conf.quantum_backup');
       if (await resolvFile.exists() && !await backupFile.exists()) {
         final currentContent = await resolvFile.readAsString();
-        await backupFile.writeAsString(currentContent);
+        if (!currentContent.contains('QuantumVPN')) {
+          await backupFile.writeAsString(currentContent);
+        }
       }
 
       final isRoot = (Platform.environment['USER'] == 'root');
@@ -435,20 +472,44 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
   }
 
   Future<void> _restoreLinuxDns() async {
+    if (!Platform.isLinux) return;
     try {
       final backupFile = File('/tmp/resolv.conf.quantum_backup');
       final resolvFile = File('/etc/resolv.conf');
+      final isRoot = (Platform.environment['USER'] == 'root');
+
       if (await backupFile.exists()) {
-        final isRoot = (Platform.environment['USER'] == 'root');
         if (isRoot) {
           await backupFile.copy(resolvFile.path);
         } else {
           await Process.run('pkexec', ['cp', '/tmp/resolv.conf.quantum_backup', '/etc/resolv.conf']);
         }
         await backupFile.delete();
-        _appendLog('[QuantumVPN] Системный DNS восстановлен.\n');
+        _appendLog('[QuantumVPN] Системный DNS восстановлен из резервной копии.\n');
+        return;
       }
-    } catch (_) {}
+
+      if (await resolvFile.exists()) {
+        final content = await resolvFile.readAsString();
+        if (content.contains('QuantumVPN') || !content.contains('nameserver')) {
+          const fallbackDns = "# Restored by QuantumVPN\nnameserver 1.1.1.1\nnameserver 8.8.8.8\nnameserver 77.88.8.8\noptions timeout:2\n";
+          if (isRoot) {
+            await resolvFile.writeAsString(fallbackDns);
+          } else {
+            final tmp = File('/tmp/resolv.conf.fallback');
+            await tmp.writeAsString(fallbackDns);
+            await Process.run('pkexec', ['cp', '/tmp/resolv.conf.fallback', '/etc/resolv.conf']);
+          }
+          _appendLog('[QuantumVPN] Системный DNS переключен на публичные резолверы (1.1.1.1, 8.8.8.8).\n');
+        }
+      }
+
+      try {
+        await Process.run('systemctl', ['restart', 'systemd-resolved']);
+      } catch (_) {}
+    } catch (e) {
+      _appendLog('[QuantumVPN] Восстановление DNS: $e\n');
+    }
   }
 
   void _startSessionTracking() {
@@ -537,7 +598,13 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     await _stderrSub?.cancel();
     _stderrSub = null;
 
-    await _restoreLinuxDns();
+    // 1. Try graceful management command first
+    try {
+      final socket = await Socket.connect('127.0.0.1', 11955, timeout: const Duration(milliseconds: 500));
+      socket.write('signal SIGTERM\n');
+      await socket.flush();
+      await socket.close();
+    } catch (_) {}
 
     if (!Platform.isLinux && _openvpn != null) {
       try {
@@ -557,10 +624,39 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     }
 
     if (Platform.isLinux) {
+      // 2. Kill by recorded PID
+      try {
+        final pidFile = File('/tmp/quantum_openvpn.pid');
+        if (await pidFile.exists()) {
+          final pidStr = (await pidFile.readAsString()).trim();
+          if (pidStr.isNotEmpty) {
+            await Process.run('kill', ['-9', pidStr]);
+            await Process.run('pkexec', ['kill', '-9', pidStr]);
+          }
+          await pidFile.delete();
+        }
+      } catch (_) {}
+
+      // 3. Kill any lingering openvpn processes
       try {
         await Process.run('pkill', ['-9', '-f', 'openvpn']);
       } catch (_) {}
+
+      // 4. Flush stale tunnel routes
+      try {
+        await Process.run('ip', ['route', 'flush', 'dev', 'tun0']);
+      } catch (_) {}
+
+      // 5. Clean up temporary auth file
+      try {
+        final authFile = File('/tmp/quantum_auth.txt');
+        if (await authFile.exists()) {
+          await authFile.delete();
+        }
+      } catch (_) {}
     }
+
+    await _restoreLinuxDns();
 
     state = state.copyWith(
       status: VpnConnectionStatus.disconnected,
@@ -569,6 +665,29 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
       currentUploadSpeedMbps: 0.0,
     );
     _appendLog('[QuantumVPN] 🔴 VPN соединение разорвано.\n');
+  }
+
+  /// Emergency reset of network, DNS, and background routing tables
+  Future<void> emergencyNetworkReset() async {
+    _appendLog('[QuantumVPN] 🛠 Запуск аварийного восстановления сети и DNS...\n');
+    await disconnect();
+    if (Platform.isLinux) {
+      try {
+        const fallback = "# Restored by QuantumVPN Emergency Reset\nnameserver 1.1.1.1\nnameserver 8.8.8.8\nnameserver 77.88.8.8\noptions timeout:2\n";
+        final isRoot = (Platform.environment['USER'] == 'root');
+        final resolv = File('/etc/resolv.conf');
+        if (isRoot) {
+          await resolv.writeAsString(fallback);
+        } else {
+          final tmp = File('/tmp/resolv.conf.fallback');
+          await tmp.writeAsString(fallback);
+          await Process.run('pkexec', ['cp', '/tmp/resolv.conf.fallback', '/etc/resolv.conf']);
+        }
+        await Process.run('systemctl', ['restart', 'systemd-resolved']);
+        await Process.run('systemctl', ['restart', 'NetworkManager']);
+      } catch (_) {}
+    }
+    _appendLog('[QuantumVPN] ✅ Сеть и системный DNS успешно восстановлены!\n');
   }
 
   void _appendLog(String line) {

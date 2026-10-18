@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'services/vpn_connection_service.dart';
 import 'ui/theme.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/servers_screen.dart';
@@ -28,15 +30,46 @@ class QuantumVpnApp extends StatelessWidget {
   }
 }
 
-class MainNavigationScaffold extends StatefulWidget {
+class MainNavigationScaffold extends ConsumerStatefulWidget {
   const MainNavigationScaffold({super.key});
 
   @override
-  State<MainNavigationScaffold> createState() => _MainNavigationScaffoldState();
+  ConsumerState<MainNavigationScaffold> createState() => _MainNavigationScaffoldState();
 }
 
-class _MainNavigationScaffoldState extends State<MainNavigationScaffold> {
+class _MainNavigationScaffoldState extends ConsumerState<MainNavigationScaffold> {
   int _currentIndex = 0;
+  late final AppLifecycleListener _lifecycleListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycleListener = AppLifecycleListener(
+      onExitRequested: () async {
+        await ref.read(vpnConnectionProvider.notifier).emergencyNetworkReset();
+        return AppExitResponse.exit;
+      },
+    );
+
+    if (Platform.isLinux) {
+      try {
+        ProcessSignal.sigint.watch().listen((_) async {
+          await ref.read(vpnConnectionProvider.notifier).emergencyNetworkReset();
+          exit(0);
+        });
+        ProcessSignal.sigterm.watch().listen((_) async {
+          await ref.read(vpnConnectionProvider.notifier).emergencyNetworkReset();
+          exit(0);
+        });
+      } catch (_) {}
+    }
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

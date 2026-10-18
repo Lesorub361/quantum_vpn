@@ -16,6 +16,8 @@ class VpnServer {
   final String operator;
   final String message;
   final String ovpnConfigBase64;
+  final String? username;
+  final String? password;
 
   const VpnServer({
     required this.hostName,
@@ -33,6 +35,8 @@ class VpnServer {
     required this.operator,
     required this.message,
     required this.ovpnConfigBase64,
+    this.username,
+    this.password,
   });
 
   /// Decodes base64 OpenVPN configuration into plain string

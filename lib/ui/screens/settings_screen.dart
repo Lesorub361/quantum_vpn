@@ -1,20 +1,24 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_lucide/flutter_lucide.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../services/vpn_connection_service.dart';
 import '../theme.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _killSwitch = true;
   bool _autoReconnect = true;
   String _selectedDns = '143.20.64.55 (Bezmezhau SmartDNS / DoT: dns.bezmezhau.com)';
+  bool _isResettingNetwork = false;
 
   @override
   void initState() {
@@ -40,6 +44,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _triggerEmergencyReset() async {
+    setState(() => _isResettingNetwork = true);
+    try {
+      await ref.read(vpnConnectionProvider.notifier).emergencyNetworkReset();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(LucideIcons.circle_check, color: QuantumVpnTheme.successGreen, size: 20),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text('Сетевые маршруты и системный DNS успешно сброшены! Интернет восстановлен.'),
+                ),
+              ],
+            ),
+            backgroundColor: QuantumVpnTheme.surface,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isResettingNetwork = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -49,6 +82,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // ── Emergency Network Reset (Linux / Stale Routes Fix) ─────────────
+          if (Platform.isLinux) ...[
+            _sectionTitle('СЕТЬ И АВАРИЙНЫЙ СБРОС (LINUX)'),
+            const SizedBox(height: 8),
+            _card(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: QuantumVpnTheme.warningOrange.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(LucideIcons.rotate_ccw, color: QuantumVpnTheme.warningOrange, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Восстановление интернета в 1 клик',
+                            style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Используйте эту кнопку, если после закрытия программы перестал работать интернет или сайты не открываются. Кнопка принудительно завершает зависший OpenVPN, сбрасывает маршруты интерфейса tun0 и восстанавливает рабочий DNS.',
+                            style: TextStyle(fontSize: 11, color: Colors.white60, height: 1.3),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isResettingNetwork ? null : _triggerEmergencyReset,
+                    icon: _isResettingNetwork
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                          )
+                        : const Icon(LucideIcons.rotate_ccw, size: 16),
+                    label: Text(
+                      _isResettingNetwork ? 'Сброс сетевых параметров...' : 'Восстановить интернет и сбросить сеть',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: QuantumVpnTheme.warningOrange,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+
           _sectionTitle('БЕЗОПАСНОСТЬ И ЗАЩИТА'),
           const SizedBox(height: 8),
           _card(
@@ -195,8 +293,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Использует открытую академическую сеть серверов VPN Gate Университета Цукуба (Япония). Все серверы полностью бесплатны, не требуют регистрации и шифруют трафик по протоколу OpenVPN.',
-                style: TextStyle(fontSize: 11, color: Colors.white54, height: 1.3),
+                'Поддерживает две открытые бесплатные сети серверов:\n'
+                '1. VPN Gate Университета Цукуба (Япония) — более 40 стран мира.\n'
+                '2. VPNBook Free OpenVPN — быстрые серверы в США, Канаде, Германии, Франции, Великобритании и Польше.\n\n'
+                'Все серверы полностью бесплатны, безопасны и шифруют трафик по протоколу OpenVPN.',
+                style: TextStyle(fontSize: 11, color: Colors.white54, height: 1.4),
               ),
             ],
           ),
