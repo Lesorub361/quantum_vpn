@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/vpn_server.dart';
@@ -102,22 +103,43 @@ class VpnGateState {
 
 class VpnGateNotifier extends StateNotifier<VpnGateState> {
   final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 25),
+    connectTimeout: const Duration(seconds: 20),
+    receiveTimeout: const Duration(seconds: 35),
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': '*/*',
+    },
+    followRedirects: true,
   ));
 
   VpnGateNotifier() : super(const VpnGateState()) {
-    loadCachedServers();
-    refreshServers();
+    _initializeServers();
   }
 
-  /// Main VPN Gate API URL + Mirrored Endpoints
+  /// Working HTTPS GitHub Mirror + VPN Gate Direct APIs
   static const List<String> _endpoints = [
+    'https://raw.githubusercontent.com/GeorgeXie2333/vpngate-list-mirror/main/data/vpngate.csv',
     'http://www.vpngate.net/api/iphone/',
-    'https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/vpngate.csv',
+    'http://vpngate.net/api/iphone/',
+    'http://219.100.37.193/api/iphone/',
   ];
 
-  Future<void> loadCachedServers() async {
+  Future<void> _initializeServers() async {
+    // 1. Instantly load pre-bundled servers so the list is NEVER empty on first launch
+    try {
+      final defaultCsv = await rootBundle.loadString('assets/default_servers.csv');
+      if (defaultCsv.isNotEmpty) {
+        final parsed = _parseCsv(defaultCsv);
+        if (parsed.isNotEmpty && state.servers.isEmpty) {
+          state = state.copyWith(
+            servers: parsed,
+            selectedServer: parsed.first,
+          );
+        }
+      }
+    } catch (_) {}
+
+    // 2. Load SharedPreferences cache if present
     try {
       final prefs = await SharedPreferences.getInstance();
       final cachedCsv = prefs.getString('cached_vpngate_csv');
@@ -131,6 +153,9 @@ class VpnGateNotifier extends StateNotifier<VpnGateState> {
         }
       }
     } catch (_) {}
+
+    // 3. Fetch latest live servers in background
+    await refreshServers();
   }
 
   Future<void> refreshServers() async {
@@ -141,10 +166,13 @@ class VpnGateNotifier extends StateNotifier<VpnGateState> {
       try {
         final response = await _dio.get<String>(
           url,
-          options: Options(responseType: ResponseType.plain),
+          options: Options(
+            responseType: ResponseType.plain,
+            validateStatus: (status) => status != null && status < 400,
+          ),
         );
 
-        if (response.statusCode == 200 && response.data != null) {
+        if (response.data != null && response.data!.isNotEmpty) {
           final parsed = _parseCsv(response.data!);
           if (parsed.isNotEmpty) {
             final prefs = await SharedPreferences.getInstance();
@@ -163,7 +191,7 @@ class VpnGateNotifier extends StateNotifier<VpnGateState> {
             return;
           }
         }
-      } catch (e) {
+      } catch (_) {
         // Try next mirror
       }
     }
@@ -174,12 +202,13 @@ class VpnGateNotifier extends StateNotifier<VpnGateState> {
         error: 'Не удалось загрузить сервера. Проверьте интернет и нажмите «Обновить».',
       );
     } else {
+      // If we already had bundled/cached servers, keep them and dismiss loading
       state = state.copyWith(isLoading: false);
     }
   }
 
   List<VpnServer> _parseCsv(String csv) {
-    final lines = csv.split('\n');
+    final lines = csv.split(RegExp(r'\r?\n'));
     final servers = <VpnServer>[];
 
     bool headerFound = false;
@@ -188,7 +217,9 @@ class VpnGateNotifier extends StateNotifier<VpnGateState> {
       if (trimmed.isEmpty || trimmed.startsWith('*')) continue;
 
       if (!headerFound) {
-        if (trimmed.startsWith('#HostName')) {
+        if (trimmed.startsWith('#HostName') ||
+            trimmed.startsWith('HostName') ||
+            trimmed.contains('CountryShort')) {
           headerFound = true;
         }
         continue;
