@@ -9,6 +9,7 @@ class QuantumVpnTheme {
 
   static const Color primaryCyan = Color(0xFF00F5FF);
   static const Color accentPurple = Color(0xFFA855F7);
+  static const Color accentNeon = Color(0xFF00FFCC);
   static const Color successGreen = Color(0xFF10B981);
   static const Color warningOrange = Color(0xFFF59E0B);
   static const Color dangerRed = Color(0xFFEF4444);

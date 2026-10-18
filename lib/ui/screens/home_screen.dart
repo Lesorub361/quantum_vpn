@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/vpn_gate_service.dart';
 import '../../services/vpn_connection_service.dart';
+import '../../services/speedtest_service.dart';
 import '../widgets/country_flag_widget.dart';
+import 'speedtest_screen.dart';
 import '../theme.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -48,6 +50,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
     final isConnected = connState.isConnected;
     final isConnecting = connState.isConnecting;
+    final speedState = ref.watch(speedtestProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -260,7 +263,76 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
             ),
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
+
+          // ── Live IP & Speedtest Bar ────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: QuantumVpnTheme.card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isConnected ? QuantumVpnTheme.successGreen.withValues(alpha: 0.35) : QuantumVpnTheme.cardBorder,
+              ),
+            ),
+            child: Row(
+              children: [
+                if (speedState.currentIp != null) ...[
+                  CountryFlagWidget(countryCode: speedState.currentIp!.countryCode, width: 28, height: 18),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            isConnected ? LucideIcons.shield_check : LucideIcons.globe,
+                            size: 13,
+                            color: isConnected ? QuantumVpnTheme.successGreen : Colors.amberAccent,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            speedState.currentIp != null ? speedState.currentIp!.ip : 'Определение IP...',
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        speedState.currentIp != null
+                            ? '${speedState.currentIp!.city.isNotEmpty ? "${speedState.currentIp!.city}, " : ""}${speedState.currentIp!.country}'
+                            : (isConnected ? 'VPN Активен' : 'Прямое соединение (Реальный IP)'),
+                        style: GoogleFonts.inter(fontSize: 10, color: Colors.white54),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SpeedtestScreen()),
+                  ),
+                  icon: const Icon(LucideIcons.gauge, size: 13, color: QuantumVpnTheme.primaryCyan),
+                  label: const Text('Тест скорости', style: TextStyle(fontSize: 10, color: QuantumVpnTheme.primaryCyan)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: QuantumVpnTheme.primaryCyan),
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
 
           // ── Selected Server Card ───────────────────────────────────────────
           Container(

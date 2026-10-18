@@ -9,7 +9,9 @@ import 'package:path/path.dart' as p;
 import '../../services/vpn_gate_service.dart';
 import '../../services/vpn_connection_service.dart';
 import '../../services/vpnbook_service.dart';
+import '../../services/speedtest_service.dart';
 import '../widgets/country_flag_widget.dart';
+import 'speedtest_screen.dart';
 import '../theme.dart';
 
 class ServersScreen extends ConsumerStatefulWidget {
@@ -23,6 +25,44 @@ class ServersScreen extends ConsumerStatefulWidget {
 
 class _ServersScreenState extends ConsumerState<ServersScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final Map<String, int?> _testedPings = {};
+  final Set<String> _testingHosts = {};
+
+  Future<void> _testServerLatency(String host, int port) async {
+    setState(() => _testingHosts.add(host));
+    final latency = await SpeedtestNotifier.testServerLatency(host, port: port);
+    if (mounted) {
+      setState(() {
+        _testedPings[host] = latency;
+        _testingHosts.remove(host);
+      });
+      if (latency != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(LucideIcons.activity, color: QuantumVpnTheme.primaryCyan, size: 16),
+                const SizedBox(width: 8),
+                Text('Отклик $host: $latency ms (${latency < 70 ? "⚡ Отличная скорость" : latency < 140 ? "🟢 Хорошая скорость" : "🟡 Средняя скорость"})'),
+              ],
+            ),
+            backgroundColor: QuantumVpnTheme.surface,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('⚠️ Сервер $host не ответил на пинг. Возможно, закрыт порт.'),
+            backgroundColor: QuantumVpnTheme.dangerRed,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -125,6 +165,15 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
             ),
           ),
           actions: [
+            IconButton(
+              icon: const Icon(LucideIcons.gauge, size: 18, color: QuantumVpnTheme.primaryCyan),
+              tooltip: 'Тест скорости',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SpeedtestScreen()),
+                );
+              },
+            ),
             IconButton(
               icon: gateState.isLoading
                   ? const SizedBox(
@@ -395,35 +444,82 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    gateNotifier.selectServer(server);
-                                    if (isConnected) {
-                                      await connNotifier.disconnect();
-                                    } else {
-                                      await connNotifier.connect(server);
-                                      widget.onConnectedNav();
-                                    }
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: isConnected
-                                        ? QuantumVpnTheme.dangerRed
-                                        : QuantumVpnTheme.primaryCyan,
-                                    foregroundColor: isConnected ? Colors.white : Colors.black,
-                                    visualDensity: VisualDensity.compact,
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        OutlinedButton(
+                                          onPressed: _testingHosts.contains(server.ip)
+                                              ? null
+                                              : () => _testServerLatency(server.ip, 443),
+                                          style: OutlinedButton.styleFrom(
+                                            side: BorderSide(
+                                              color: _testedPings.containsKey(server.ip)
+                                                  ? QuantumVpnTheme.accentNeon
+                                                  : QuantumVpnTheme.cardBorder,
+                                            ),
+                                            visualDensity: VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          child: _testingHosts.contains(server.ip)
+                                              ? const SizedBox(
+                                                  width: 12,
+                                                  height: 12,
+                                                  child: CircularProgressIndicator(strokeWidth: 2, color: QuantumVpnTheme.primaryCyan),
+                                                )
+                                              : Text(
+                                                  _testedPings.containsKey(server.ip) && _testedPings[server.ip] != null
+                                                      ? '${_testedPings[server.ip]}ms'
+                                                      : 'Тест',
+                                                  style: GoogleFonts.inter(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: _testedPings.containsKey(server.ip)
+                                                        ? QuantumVpnTheme.accentNeon
+                                                        : Colors.white70,
+                                                  ),
+                                                ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        ElevatedButton(
+                                          onPressed: () async {
+                                            gateNotifier.selectServer(server);
+                                            if (isConnected) {
+                                              await connNotifier.disconnect();
+                                            } else {
+                                              await connNotifier.connect(server);
+                                              widget.onConnectedNav();
+                                            }
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: isConnected
+                                                ? QuantumVpnTheme.dangerRed
+                                                : QuantumVpnTheme.primaryCyan,
+                                            foregroundColor: isConnected ? Colors.white : Colors.black,
+                                            visualDensity: VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            isConnected
+                                                ? 'Отключить'
+                                                : isConnecting
+                                                    ? 'Связь...'
+                                                    : 'Подключить',
+                                            style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  child: Text(
-                                    isConnected
-                                        ? 'Отключить'
-                                        : isConnecting
-                                            ? 'Связь...'
-                                            : 'Подключить',
-                                    style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
-                                  ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -651,6 +747,40 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                     onPressed: () => _downloadVpnBookConfig(server, bookState.selectedProtocol),
                   ),
                   const SizedBox(width: 4),
+                  OutlinedButton(
+                    onPressed: _testingHosts.contains(server.hostname)
+                        ? null
+                        : () => _testServerLatency(server.hostname, 443),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                        color: _testedPings.containsKey(server.hostname)
+                            ? QuantumVpnTheme.accentNeon
+                            : QuantumVpnTheme.cardBorder,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: _testingHosts.contains(server.hostname)
+                        ? const SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: QuantumVpnTheme.primaryCyan),
+                          )
+                        : Text(
+                            _testedPings.containsKey(server.hostname) && _testedPings[server.hostname] != null
+                                ? '${_testedPings[server.hostname]}ms'
+                                : 'Тест',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: _testedPings.containsKey(server.hostname)
+                                  ? QuantumVpnTheme.accentNeon
+                                  : Colors.white70,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 6),
                   ElevatedButton(
                     onPressed: () async {
                       if (isConnected) {
