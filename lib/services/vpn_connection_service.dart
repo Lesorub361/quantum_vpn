@@ -221,8 +221,10 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     for (final ip in dnsIps) {
       sb.writeln('dhcp-option DNS $ip');
     }
-    // Block DNS leaks outside tunnel
-    sb.writeln('block-outside-dns');
+    // Block DNS leaks outside tunnel (Windows only)
+    if (Platform.isWindows) {
+      sb.writeln('block-outside-dns');
+    }
     sb.writeln('keepalive 10 30');
     sb.writeln();
 
