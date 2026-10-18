@@ -75,14 +75,19 @@ class _MainNavigationScaffoldState extends ConsumerState<MainNavigationScaffold>
   @override
   Widget build(BuildContext context) {
     final isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+    final isLinux = Platform.isLinux;
 
     final screens = [
       HomeScreen(onSelectServerTap: () => setState(() => _currentIndex = 1)),
       ServersScreen(onConnectedNav: () => setState(() => _currentIndex = 0)),
-      const AntigravityScreen(),
+      if (isLinux) const AntigravityScreen(),
       const LogsScreen(),
       const SettingsScreen(),
     ];
+
+    if (_currentIndex >= screens.length) {
+      _currentIndex = 0;
+    }
 
     if (isDesktop) {
       return Scaffold(
@@ -120,28 +125,29 @@ class _MainNavigationScaffoldState extends ConsumerState<MainNavigationScaffold>
                 color: QuantumVpnTheme.primaryCyan,
               ),
               unselectedLabelTextStyle: GoogleFonts.inter(fontSize: 11, color: Colors.white54),
-              destinations: const [
-                NavigationRailDestination(
+              destinations: [
+                const NavigationRailDestination(
                   icon: Icon(LucideIcons.shield),
                   selectedIcon: Icon(LucideIcons.shield_check),
                   label: Text('Главная'),
                 ),
-                NavigationRailDestination(
+                const NavigationRailDestination(
                   icon: Icon(LucideIcons.globe),
                   selectedIcon: Icon(LucideIcons.globe),
                   label: Text('Серверы'),
                 ),
-                NavigationRailDestination(
-                  icon: Icon(LucideIcons.sparkles),
-                  selectedIcon: Icon(LucideIcons.sparkles),
-                  label: Text('Antigravity'),
-                ),
-                NavigationRailDestination(
+                if (isLinux)
+                  const NavigationRailDestination(
+                    icon: Icon(LucideIcons.sparkles),
+                    selectedIcon: Icon(LucideIcons.sparkles),
+                    label: Text('Antigravity'),
+                  ),
+                const NavigationRailDestination(
                   icon: Icon(LucideIcons.terminal),
                   selectedIcon: Icon(LucideIcons.terminal),
                   label: Text('Логи'),
                 ),
-                NavigationRailDestination(
+                const NavigationRailDestination(
                   icon: Icon(LucideIcons.settings),
                   selectedIcon: Icon(LucideIcons.settings_2),
                   label: Text('Настройки'),
@@ -185,28 +191,29 @@ class _MainNavigationScaffoldState extends ConsumerState<MainNavigationScaffold>
           unselectedItemColor: Colors.white54,
           selectedLabelStyle: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
           unselectedLabelStyle: GoogleFonts.inter(fontSize: 10),
-          items: const [
-            BottomNavigationBarItem(
+          items: [
+            const BottomNavigationBarItem(
               icon: Icon(LucideIcons.shield),
               activeIcon: Icon(LucideIcons.shield_check),
               label: 'Главная',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(LucideIcons.globe),
               activeIcon: Icon(LucideIcons.globe),
               label: 'Серверы',
             ),
-            BottomNavigationBarItem(
-              icon: Icon(LucideIcons.sparkles),
-              activeIcon: Icon(LucideIcons.sparkles),
-              label: 'Antigravity',
-            ),
-            BottomNavigationBarItem(
+            if (isLinux)
+              const BottomNavigationBarItem(
+                icon: Icon(LucideIcons.sparkles),
+                activeIcon: Icon(LucideIcons.sparkles),
+                label: 'Antigravity',
+              ),
+            const BottomNavigationBarItem(
               icon: Icon(LucideIcons.terminal),
               activeIcon: Icon(LucideIcons.terminal),
               label: 'Логи',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(LucideIcons.settings),
               activeIcon: Icon(LucideIcons.settings_2),
               label: 'Настройки',

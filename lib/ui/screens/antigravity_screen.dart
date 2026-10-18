@@ -69,6 +69,42 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
     ];
 
     _scanTools();
+    _checkGoogleHealth();
+  }
+
+  int? _geminiPingMs;
+  int? _authPingMs;
+  bool _isCheckingHealth = false;
+
+  Future<void> _checkGoogleHealth() async {
+    if (_isCheckingHealth) return;
+    setState(() => _isCheckingHealth = true);
+
+    try {
+      final sw = Stopwatch()..start();
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+      final req = await client.getUrl(Uri.parse('https://generativelanguage.googleapis.com'));
+      await req.close();
+      sw.stop();
+      _geminiPingMs = sw.elapsedMilliseconds;
+    } catch (_) {
+      _geminiPingMs = -1;
+    }
+
+    try {
+      final sw = Stopwatch()..start();
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+      final req = await client.getUrl(Uri.parse('https://accounts.google.com'));
+      await req.close();
+      sw.stop();
+      _authPingMs = sw.elapsedMilliseconds;
+    } catch (_) {
+      _authPingMs = -1;
+    }
+
+    if (mounted) {
+      setState(() => _isCheckingHealth = false);
+    }
   }
 
   void _appendLog(String text) {
@@ -506,6 +542,109 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
             ),
           ),
 
+          const SizedBox(height: 12),
+
+          // ── Google AI & Auth Live Status ────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: QuantumVpnTheme.card,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: QuantumVpnTheme.cardBorder),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        _geminiPingMs == null
+                            ? LucideIcons.circle_dot
+                            : _geminiPingMs! > 0
+                                ? LucideIcons.circle_check
+                                : LucideIcons.circle_x,
+                        size: 14,
+                        color: _geminiPingMs == null
+                            ? Colors.white38
+                            : _geminiPingMs! > 0
+                                ? QuantumVpnTheme.successGreen
+                                : Colors.redAccent,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Gemini API: ',
+                        style: GoogleFonts.inter(fontSize: 11, color: Colors.white70),
+                      ),
+                      Text(
+                        _geminiPingMs == null
+                            ? 'Проверка...'
+                            : _geminiPingMs! > 0
+                                ? '${_geminiPingMs}ms'
+                                : 'Блокируется',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _geminiPingMs != null && _geminiPingMs! > 0
+                              ? QuantumVpnTheme.successGreen
+                              : Colors.redAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        _authPingMs == null
+                            ? LucideIcons.circle_dot
+                            : _authPingMs! > 0
+                                ? LucideIcons.circle_check
+                                : LucideIcons.circle_x,
+                        size: 14,
+                        color: _authPingMs == null
+                            ? Colors.white38
+                            : _authPingMs! > 0
+                                ? QuantumVpnTheme.successGreen
+                                : Colors.redAccent,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Google Auth: ',
+                        style: GoogleFonts.inter(fontSize: 11, color: Colors.white70),
+                      ),
+                      Text(
+                        _authPingMs == null
+                            ? 'Проверка...'
+                            : _authPingMs! > 0
+                                ? '${_authPingMs}ms'
+                                : 'Блокируется',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _authPingMs != null && _authPingMs! > 0
+                              ? QuantumVpnTheme.successGreen
+                              : Colors.redAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: _isCheckingHealth
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: QuantumVpnTheme.primaryCyan),
+                        )
+                      : const Icon(LucideIcons.refresh_cw, size: 14, color: Colors.white54),
+                  onPressed: _isCheckingHealth ? null : _checkGoogleHealth,
+                  tooltip: 'Проверить доступность серверов Google AI',
+                ),
+              ],
+            ),
+          ),
+
           const SizedBox(height: 20),
 
           // ── Quick Action Buttons Bar ───────────────────────────────────────
@@ -551,6 +690,20 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isOperating ? null : () => _runCleanerCommand('clean', []),
+              icon: const Icon(LucideIcons.sparkles, size: 14, color: Colors.amberAccent),
+              label: const Text('Сброс кэша токенов (Anti-429 Fix при ошибке Too Many Requests)', style: TextStyle(fontSize: 11, color: Colors.amberAccent)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.amberAccent),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
           ),
 
           const SizedBox(height: 20),

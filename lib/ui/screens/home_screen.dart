@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/vpn_gate_service.dart';
 import '../../services/vpn_connection_service.dart';
+import '../widgets/country_flag_widget.dart';
 import '../theme.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -305,9 +306,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 if (activeServer != null) ...[
                   Row(
                     children: [
-                      Text(
-                        activeServer.flagEmoji,
-                        style: const TextStyle(fontSize: 32),
+                      CountryFlagWidget(
+                        countryCode: activeServer.countryShort,
+                        width: 38,
+                        height: 26,
                       ),
                       const SizedBox(width: 14),
                       Expanded(

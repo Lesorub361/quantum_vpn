@@ -6,10 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import '../../models/vpn_server.dart';
 import '../../services/vpn_gate_service.dart';
 import '../../services/vpn_connection_service.dart';
 import '../../services/vpnbook_service.dart';
+import '../widgets/country_flag_widget.dart';
 import '../theme.dart';
 
 class ServersScreen extends ConsumerStatefulWidget {
@@ -256,28 +256,13 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               ),
               ...countries.map((c) {
                 final isSel = gateState.selectedCountryFilter == c['code'];
-                final flag = VpnServer(
-                  hostName: '',
-                  ip: '',
-                  score: 0,
-                  ping: 0,
-                  speedBps: 0,
-                  countryLong: '',
-                  countryShort: c['code']!,
-                  numVpnSessions: 0,
-                  uptime: 0,
-                  totalUsers: 0,
-                  totalTraffic: 0,
-                  logType: '',
-                  operator: '',
-                  message: '',
-                  ovpnConfigBase64: '',
-                ).flagEmoji;
+                final countryCode = c['code']!;
 
                 return Padding(
                   padding: const EdgeInsets.only(right: 6),
                   child: FilterChip(
-                    label: Text('$flag ${c['name']}', style: const TextStyle(fontSize: 11)),
+                    avatar: CountryFlagWidget(countryCode: countryCode, width: 18, height: 12),
+                    label: Text(c['name']!, style: const TextStyle(fontSize: 11)),
                     selected: isSel,
                     selectedColor: QuantumVpnTheme.primaryCyan,
                     labelStyle: TextStyle(
@@ -363,7 +348,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                             padding: const EdgeInsets.all(12),
                             child: Row(
                               children: [
-                                Text(server.flagEmoji, style: const TextStyle(fontSize: 28)),
+                                CountryFlagWidget(countryCode: server.countryShort, width: 34, height: 24),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
@@ -626,7 +611,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
-                  Text(server.flagEmoji, style: const TextStyle(fontSize: 28)),
+                  CountryFlagWidget(countryCode: server.countryShort, width: 34, height: 24),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
