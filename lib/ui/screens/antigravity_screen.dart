@@ -147,6 +147,20 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
       _tools[0].detectedPath = foundIde;
       _tools[0].isInstalled = foundIde != null;
 
+      if (foundIde != null) {
+        try {
+          final ideDir = File(foundIde).parent.path;
+          final appsDir = Directory('$home/Applications');
+          if (!await appsDir.exists()) {
+            await appsDir.create(recursive: true);
+          }
+          final standardLink = Link('$home/Applications/Antigravity');
+          if (!await standardLink.exists()) {
+            await standardLink.create(ideDir);
+          }
+        } catch (_) {}
+      }
+
       // 2. Antigravity 2.0 Hub candidates
       final hubCandidates = [
         '/opt/antigravity/antigravity',
@@ -337,6 +351,24 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
       }
 
       if (command == 'patch') {
+        // Ensure ~/Applications/Antigravity symlink exists for non-standard install paths
+        final foundIde = _tools[0].detectedPath;
+        if (foundIde != null) {
+          try {
+            final home = Platform.environment['HOME'] ?? '/root';
+            final ideDir = File(foundIde).parent.path;
+            final appsDir = Directory('$home/Applications');
+            if (!await appsDir.exists()) {
+              await appsDir.create(recursive: true);
+            }
+            final standardLink = Link('$home/Applications/Antigravity');
+            if (!await standardLink.exists()) {
+              await standardLink.create(ideDir);
+              _appendLog('🔗 Создана ссылка для обнаружения: ~/Applications/Antigravity -> $ideDir\n');
+            }
+          } catch (_) {}
+        }
+
         _appendLog('🧹 Завершение активных процессов Antigravity для освобождения файлов...\n');
         try {
           await Process.run(cleanerExe, ['kill']);
