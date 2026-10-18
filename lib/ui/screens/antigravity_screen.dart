@@ -302,7 +302,23 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
         return;
       }
 
+      if (command == 'patch') {
+        _appendLog('🧹 Завершение активных процессов Antigravity для освобождения файлов...\n');
+        try {
+          await Process.run(cleanerExe, ['kill']);
+          await Process.run('pkill', ['-f', 'language_server']);
+        } catch (_) {}
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
       final proc = await Process.start(cleanerExe, [command, ...args]);
+      
+      // Auto-confirm in case cleaner prompts interactively
+      try {
+        proc.stdin.writeln('y');
+        await proc.stdin.flush();
+      } catch (_) {}
+
       proc.stdout.transform(utf8.decoder).transform(const LineSplitter()).listen((line) {
         _appendLog('$line\n');
       });
@@ -449,12 +465,23 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _isOperating ? null : () => _runCleanerCommand('doctor', []),
                   icon: const Icon(LucideIcons.stethoscope, size: 15, color: QuantumVpnTheme.primaryCyan),
-                  label: const Text('Диагностика сети', style: TextStyle(fontSize: 11, color: Colors.white)),
+                  label: const Text('Диагностика', style: TextStyle(fontSize: 11, color: Colors.white)),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: QuantumVpnTheme.cardBorder),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _isOperating ? null : () => _runCleanerCommand('kill', []),
+                icon: const Icon(LucideIcons.power, size: 15, color: Colors.redAccent),
+                label: const Text('Закрыть процессы', style: TextStyle(fontSize: 11, color: Colors.redAccent)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.redAccent),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ],
