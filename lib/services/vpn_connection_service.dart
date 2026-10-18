@@ -362,7 +362,7 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
       final p = server.password ?? 'vpn';
       await authFile.writeAsString('$u\n$p\n');
       try {
-        await Process.run('chmod', ['600', authFile.path]);
+        await Process.run('chmod', ['644', authFile.path]);
       } catch (_) {}
 
       // Check if pkexec or sudo is needed
@@ -370,12 +370,15 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
       List<String> commandArgs = [
         '--config', configPath,
         '--auth-user-pass', authFile.path,
+        '--auth-nocache',
         '--auth-retry', 'nointeract',
         '--writepid', '/tmp/quantum_openvpn.pid',
         '--management', '127.0.0.1', '11955',
         '--script-security', '2',
         '--connect-retry-max', '2',
-        '--connect-timeout', '15',
+        '--connect-timeout', '20',
+        '--sndbuf', '524288',
+        '--rcvbuf', '524288',
       ];
       String executable;
 

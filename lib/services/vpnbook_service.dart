@@ -47,7 +47,7 @@ class VpnBookState {
 
   const VpnBookState({
     required this.servers,
-    this.selectedProtocol = 'tcp443',
+    this.selectedProtocol = 'udp53',
     this.username = 'vpnbook',
     this.password = 'e5c65ph',
     this.isLoading = false,
