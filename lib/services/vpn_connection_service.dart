@@ -89,6 +89,9 @@ class VpnConnectionState {
 
 class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
   Process? _openvpnProcess;
+  StreamSubscription? _stdoutSub;
+  StreamSubscription? _stderrSub;
+  Timer? _connectionTimeoutTimer;
   OpenVPN? _openvpn;
   Timer? _sessionTimer;
   Timer? _speedStatsTimer;
@@ -280,32 +283,40 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
 
       // Check if pkexec or sudo is needed
       final isRoot = (Platform.environment['USER'] == 'root');
-      List<String> commandArgs;
+      List<String> commandArgs = [
+        '--config', configPath,
+        '--script-security', '2',
+        '--connect-retry-max', '2',
+        '--connect-timeout', '8',
+      ];
       String executable;
 
       if (isRoot) {
         executable = 'openvpn';
-        commandArgs = ['--config', configPath, '--script-security', '2'];
       } else {
         executable = 'pkexec';
-        commandArgs = ['openvpn', '--config', configPath, '--script-security', '2'];
+        commandArgs = ['openvpn', ...commandArgs];
       }
 
       _openvpnProcess = await Process.start(executable, commandArgs);
 
-      _openvpnProcess!.stdout
+      _stdoutSub = _openvpnProcess!.stdout
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .listen((line) {
         _appendLog('[OpenVPN] $line\n');
         if (line.contains('Initialization Sequence Completed')) {
+          _connectionTimeoutTimer?.cancel();
+          _connectionTimeoutTimer = null;
           _appendLog('[QuantumVPN] 🟢 Успешно подключено к VPN (${server.countryLong})!\n');
           state = state.copyWith(status: VpnConnectionStatus.connected);
           _startSessionTracking();
+        } else if (line.contains('No route to host') || line.contains('Connection refused')) {
+          _appendLog('[QuantumVPN] ⚠️ Сервер недоступен из вашей сети: $line\n');
         }
       });
 
-      _openvpnProcess!.stderr
+      _stderrSub = _openvpnProcess!.stderr
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .listen((line) {
@@ -314,6 +325,8 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
 
       _openvpnProcess!.exitCode.then((code) {
         _appendLog('[QuantumVPN] Процесс OpenVPN завершился с кодом $code.\n');
+        _connectionTimeoutTimer?.cancel();
+        _connectionTimeoutTimer = null;
         if (state.status == VpnConnectionStatus.connected ||
             state.status == VpnConnectionStatus.connecting) {
           state = state.copyWith(
@@ -324,11 +337,16 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
         }
       });
 
-      // Fallback timer: if after 6 seconds openvpn is running without explicit error, set connected
-      Future.delayed(const Duration(seconds: 6), () {
-        if (state.status == VpnConnectionStatus.connecting && _openvpnProcess != null) {
-          state = state.copyWith(status: VpnConnectionStatus.connected);
-          _startSessionTracking();
+      // Timeout if server doesn't respond in 15 seconds
+      _connectionTimeoutTimer?.cancel();
+      _connectionTimeoutTimer = Timer(const Duration(seconds: 15), () {
+        if (state.status == VpnConnectionStatus.connecting) {
+          _appendLog('[QuantumVPN] ❌ Время ожидания ответа сервера истекло (15 сек). Сервер недоступен.\n');
+          disconnect();
+          state = state.copyWith(
+            status: VpnConnectionStatus.error,
+            errorMessage: 'Сервер ${server.ip} недоступен. Попробуйте другой сервер из списка.',
+          );
         }
       });
     } catch (e) {
@@ -412,7 +430,15 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
     state = state.copyWith(status: VpnConnectionStatus.disconnecting);
     _appendLog('[QuantumVPN] Отключение от VPN...\n');
 
+    _connectionTimeoutTimer?.cancel();
+    _connectionTimeoutTimer = null;
+
     _stopTimers();
+
+    await _stdoutSub?.cancel();
+    _stdoutSub = null;
+    await _stderrSub?.cancel();
+    _stderrSub = null;
 
     if (!Platform.isLinux && _openvpn != null) {
       try {
@@ -433,7 +459,7 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
 
     if (Platform.isLinux) {
       try {
-        await Process.run('pkill', ['-f', 'openvpn']);
+        await Process.run('pkill', ['-9', '-f', 'openvpn']);
       } catch (_) {}
     }
 
