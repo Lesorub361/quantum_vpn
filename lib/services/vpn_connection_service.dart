@@ -224,8 +224,13 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
 
   /// Builds optimized OpenVPN configuration injecting full tunnel routing and DNS leak protection
   Future<({String config, List<String> dnsIps})> _buildOptimizedConfig(String rawConfig) async {
-    final prefs = await SharedPreferences.getInstance();
-    final selectedDns = prefs.getString('vpn_dns') ?? '143.20.64.55 (Bezmezhau SmartDNS / DoT: dns.bezmezhau.com)';
+    String selectedDns = '143.20.64.55 (Bezmezhau SmartDNS / DoT: dns.bezmezhau.com)';
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      selectedDns = prefs.getString('vpn_dns') ?? selectedDns;
+    } catch (e) {
+      _appendLog('[QuantumVPN] Использование DNS по умолчанию (Bezmezhau SmartDNS)\n');
+    }
     final dnsIps = _getDnsIps(selectedDns);
 
     final sb = StringBuffer();
@@ -370,7 +375,7 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
         '--management', '127.0.0.1', '11955',
         '--script-security', '2',
         '--connect-retry-max', '2',
-        '--connect-timeout', '8',
+        '--connect-timeout', '15',
       ];
       String executable;
 
@@ -395,6 +400,19 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
           await _applyLinuxDns(dnsIps);
           state = state.copyWith(status: VpnConnectionStatus.connected);
           _startSessionTracking();
+        } else if (line.contains('Peer Connection Initiated') || line.contains('PUSH_REQUEST')) {
+          _connectionTimeoutTimer?.cancel();
+          _appendLog('[QuantumVPN] 🔑 Авторизация подтверждена, получение сетевых маршрутов...\n');
+          _connectionTimeoutTimer = Timer(const Duration(seconds: 35), () {
+            if (state.status == VpnConnectionStatus.connecting) {
+              _appendLog('[QuantumVPN] ❌ Время ожидания ответа сервера истекло (35 сек).\n');
+              disconnect();
+              state = state.copyWith(
+                status: VpnConnectionStatus.error,
+                errorMessage: 'Сервер ${server.ip} задержал ответ. Попробуйте другой сервер.',
+              );
+            }
+          });
         } else if (line.contains('No route to host') || line.contains('Connection refused')) {
           _appendLog('[QuantumVPN] ⚠️ Сервер недоступен из вашей сети: $line\n');
         }
@@ -422,11 +440,11 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
         }
       });
 
-      // Timeout if server doesn't respond in 15 seconds
+      // Timeout if server doesn't respond in 40 seconds
       _connectionTimeoutTimer?.cancel();
-      _connectionTimeoutTimer = Timer(const Duration(seconds: 15), () {
+      _connectionTimeoutTimer = Timer(const Duration(seconds: 40), () {
         if (state.status == VpnConnectionStatus.connecting) {
-          _appendLog('[QuantumVPN] ❌ Время ожидания ответа сервера истекло (15 сек). Сервер недоступен.\n');
+          _appendLog('[QuantumVPN] ❌ Время ожидания ответа сервера истекло (40 сек). Сервер недоступен.\n');
           disconnect();
           state = state.copyWith(
             status: VpnConnectionStatus.error,

@@ -8,6 +8,7 @@ import 'services/vpn_connection_service.dart';
 import 'ui/theme.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/servers_screen.dart';
+import 'ui/screens/antigravity_screen.dart';
 import 'ui/screens/logs_screen.dart';
 import 'ui/screens/settings_screen.dart';
 
@@ -78,6 +79,7 @@ class _MainNavigationScaffoldState extends ConsumerState<MainNavigationScaffold>
     final screens = [
       HomeScreen(onSelectServerTap: () => setState(() => _currentIndex = 1)),
       ServersScreen(onConnectedNav: () => setState(() => _currentIndex = 0)),
+      const AntigravityScreen(),
       const LogsScreen(),
       const SettingsScreen(),
     ];
@@ -128,6 +130,11 @@ class _MainNavigationScaffoldState extends ConsumerState<MainNavigationScaffold>
                   icon: Icon(LucideIcons.globe),
                   selectedIcon: Icon(LucideIcons.globe),
                   label: Text('Серверы'),
+                ),
+                NavigationRailDestination(
+                  icon: Icon(LucideIcons.sparkles),
+                  selectedIcon: Icon(LucideIcons.sparkles),
+                  label: Text('Antigravity'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(LucideIcons.terminal),
@@ -188,6 +195,11 @@ class _MainNavigationScaffoldState extends ConsumerState<MainNavigationScaffold>
               icon: Icon(LucideIcons.globe),
               activeIcon: Icon(LucideIcons.globe),
               label: 'Серверы',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(LucideIcons.sparkles),
+              activeIcon: Icon(LucideIcons.sparkles),
+              label: 'Antigravity',
             ),
             BottomNavigationBarItem(
               icon: Icon(LucideIcons.terminal),
