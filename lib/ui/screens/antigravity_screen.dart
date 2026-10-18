@@ -172,6 +172,121 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
     }
   }
 
+  Future<String?> _ensureCleanerInstalled() async {
+    final home = Platform.environment['HOME'] ?? '/root';
+    final candidatePaths = [
+      '/usr/local/bin/ag-cleaner',
+      '$home/.local/bin/ag-cleaner',
+      '/usr/bin/ag-cleaner',
+      '/tmp/ag-cleaner',
+    ];
+
+    for (final p in candidatePaths) {
+      final f = File(p);
+      if (await f.exists()) {
+        return p;
+      }
+    }
+
+    // Check which ag-cleaner in PATH
+    try {
+      final whichRes = await Process.run('which', ['ag-cleaner']);
+      if (whichRes.exitCode == 0 && whichRes.stdout.toString().trim().isNotEmpty) {
+        final found = whichRes.stdout.toString().trim();
+        if (await File(found).exists()) return found;
+      }
+    } catch (_) {}
+
+    // Not found -> Auto-download official release
+    _appendLog('⚙️ Движок ag-cleaner не обнаружен на устройстве.\n');
+    _appendLog('📥 Автоматическая загрузка официального релиза ag-cleaner с GitHub...\n');
+
+    try {
+      String archTag = 'linux-amd64';
+      try {
+        final unameRes = await Process.run('uname', ['-m']);
+        final arch = unameRes.stdout.toString().trim();
+        if (arch == 'aarch64' || arch == 'arm64') {
+          archTag = 'linux-arm64';
+        }
+      } catch (_) {}
+
+      final downloadUrl = 'https://github.com/tawroot/antigravity-cleaner/releases/latest/download/antigravity-cleaner-$archTag';
+
+      String targetPath = '$home/.local/bin/ag-cleaner';
+      try {
+        final binDir = Directory('$home/.local/bin');
+        if (!await binDir.exists()) {
+          await binDir.create(recursive: true);
+        }
+      } catch (_) {
+        targetPath = '/tmp/ag-cleaner';
+      }
+
+      _appendLog('🌐 Скачивание $downloadUrl -> $targetPath ...\n');
+
+      bool downloaded = false;
+      try {
+        final curlRes = await Process.run('curl', [
+          '-sSL',
+          downloadUrl,
+          '-o',
+          targetPath,
+        ]);
+        if (curlRes.exitCode == 0) {
+          final f = File(targetPath);
+          if (await f.exists() && await f.length() > 50000) {
+            downloaded = true;
+          }
+        }
+      } catch (_) {}
+
+      if (!downloaded) {
+        try {
+          final wgetRes = await Process.run('wget', [
+            '-q',
+            '-O',
+            targetPath,
+            downloadUrl,
+          ]);
+          if (wgetRes.exitCode == 0) {
+            final f = File(targetPath);
+            if (await f.exists() && await f.length() > 50000) {
+              downloaded = true;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!downloaded) {
+        try {
+          final client = HttpClient();
+          client.connectionTimeout = const Duration(seconds: 25);
+          final request = await client.getUrl(Uri.parse(downloadUrl));
+          request.followRedirects = true;
+          request.maxRedirects = 5;
+          final response = await request.close();
+          if (response.statusCode >= 200 && response.statusCode < 400) {
+            final sink = File(targetPath).openWrite();
+            await response.pipe(sink);
+            await sink.close();
+            downloaded = true;
+          }
+        } catch (_) {}
+      }
+
+      if (downloaded) {
+        await Process.run('chmod', ['+x', targetPath]);
+        _appendLog('✅ ag-cleaner успешно установлен и готов к работе!\n\n');
+        return targetPath;
+      }
+    } catch (e) {
+      _appendLog('⚠️ Ошибка при автоматической загрузке: $e\n');
+    }
+
+    return null;
+  }
+
   Future<void> _runCleanerCommand(String command, List<String> args) async {
     setState(() {
       _isOperating = true;
@@ -179,15 +294,12 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
     });
 
     try {
-      String cleanerExe = 'ag-cleaner';
-      if (await File('/usr/local/bin/ag-cleaner').exists()) {
-        cleanerExe = '/usr/local/bin/ag-cleaner';
-      } else {
-        final home = Platform.environment['HOME'] ?? '/root';
-        final userBin = '$home/.local/bin/ag-cleaner';
-        if (await File(userBin).exists()) {
-          cleanerExe = userBin;
-        }
+      final cleanerExe = await _ensureCleanerInstalled();
+      if (cleanerExe == null) {
+        _appendLog('❌ Не удалось автоматически загрузить ag-cleaner.\n');
+        _appendLog('💡 Установите его вручную одной командой в терминале:\n');
+        _appendLog('   mkdir -p ~/.local/bin && curl -sSL https://github.com/tawroot/antigravity-cleaner/releases/latest/download/antigravity-cleaner-linux-amd64 -o ~/.local/bin/ag-cleaner && chmod +x ~/.local/bin/ag-cleaner\n');
+        return;
       }
 
       final proc = await Process.start(cleanerExe, [command, ...args]);
