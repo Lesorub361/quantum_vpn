@@ -88,6 +88,16 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
     try {
       // 1. Antigravity IDE candidates
       final ideCandidates = [
+        '$home/Загрузки/Antigravity/Antigravity-x64/antigravity',
+        '$home/Загрузки/Antigravity/Antigravity-x64/Antigravity',
+        '$home/Загрузки/Antigravity/antigravity',
+        '$home/Загрузки/Antigravity/Antigravity',
+        '$home/Downloads/Antigravity/Antigravity-x64/antigravity',
+        '$home/Downloads/Antigravity/Antigravity-x64/Antigravity',
+        '$home/Downloads/Antigravity/antigravity',
+        '$home/Downloads/Antigravity/Antigravity',
+        '$home/Загрузки/antigravity/antigravity',
+        '$home/Downloads/antigravity/antigravity',
         '/opt/Antigravity IDE/antigravity',
         '/opt/Antigravity IDE/Antigravity',
         '/opt/antigravity-ide/antigravity',
@@ -103,6 +113,30 @@ class _AntigravityScreenState extends State<AntigravityScreen> {
           foundIde = p;
           break;
         }
+      }
+      if (foundIde == null) {
+        try {
+          final psRes = await Process.run('pgrep', ['-a', '-f', 'language_server']);
+          if (psRes.exitCode == 0) {
+            for (final line in psRes.stdout.toString().split('\n')) {
+              if (line.contains('/resources/bin/language_server')) {
+                final match = RegExp(r'(/.*?)/resources/bin/language_server').firstMatch(line);
+                if (match != null) {
+                  final baseDir = match.group(1)!;
+                  final candidate1 = '$baseDir/antigravity';
+                  final candidate2 = '$baseDir/Antigravity';
+                  if (await File(candidate1).exists()) {
+                    foundIde = candidate1;
+                    break;
+                  } else if (await File(candidate2).exists()) {
+                    foundIde = candidate2;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        } catch (_) {}
       }
       if (foundIde == null) {
         final whichRes = await Process.run('which', ['antigravity-ide']);
