@@ -228,7 +228,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                     : ListView.separated(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         itemCount: filteredServers.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        separatorBuilder: (context, index) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final server = filteredServers[index];
                           final isCurrentlyActive =
