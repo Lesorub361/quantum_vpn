@@ -62,6 +62,59 @@ void main() {
       expect(server.pingFormatted, '15 ms');
       expect(server.flagEmoji, '🇯🇵');
       expect(server.speedFormatted, '1.00 Gbps');
+      expect(server.isStealthProtocol, isFalse);
+      expect(server.protocolBadge, 'OpenVPN');
+    });
+
+    test('Correctly identifies stealth protocols (VLESS Reality & Shadowsocks)', () {
+      const vlessServer = VpnServer(
+        hostName: 'vless-de',
+        ip: '150.241.101.80',
+        score: 10000,
+        ping: 45,
+        speedBps: 150000000,
+        countryLong: 'Germany',
+        countryShort: 'DE',
+        numVpnSessions: 1,
+        uptime: 86400,
+        totalUsers: 1,
+        totalTraffic: 1000,
+        logType: 'stealth',
+        operator: 'QuantumStealth',
+        message: 'Xray Core',
+        ovpnConfigBase64: '',
+        protocolType: 'vless',
+        port: 8443,
+        sni: 'yandex.net',
+      );
+
+      expect(vlessServer.isStealthProtocol, isTrue);
+      expect(vlessServer.protocolBadge, 'VLESS Reality');
+      expect(vlessServer.flagEmoji, '🇩🇪');
+
+      const ssServer = VpnServer(
+        hostName: 'ss-no',
+        ip: '185.213.23.63',
+        score: 10000,
+        ping: 60,
+        speedBps: 200000000,
+        countryLong: 'Norway',
+        countryShort: 'NO',
+        numVpnSessions: 1,
+        uptime: 86400,
+        totalUsers: 1,
+        totalTraffic: 1000,
+        logType: 'stealth',
+        operator: 'QuantumStealth',
+        message: 'Shadowsocks',
+        ovpnConfigBase64: '',
+        protocolType: 'shadowsocks',
+        port: 990,
+      );
+
+      expect(ssServer.isStealthProtocol, isTrue);
+      expect(ssServer.protocolBadge, 'Shadowsocks');
+      expect(ssServer.flagEmoji, '🇳🇴');
     });
   });
 }

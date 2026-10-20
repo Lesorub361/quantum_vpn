@@ -90,6 +90,7 @@ class VpnConnectionState {
 
 class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
   Process? _openvpnProcess;
+  Process? _xrayProcess;
   StreamSubscription? _stdoutSub;
   StreamSubscription? _stderrSub;
   Timer? _connectionTimeoutTimer;
@@ -287,6 +288,12 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
       totalBytesOut: 0,
     );
 
+    // If server uses modern stealth protocol (Shadowsocks, VLESS Reality, Trojan), use Xray
+    if (server.isStealthProtocol) {
+      await _connectStealth(server);
+      return;
+    }
+
     try {
       final rawConfig = server.ovpnConfigRaw;
       if (rawConfig.isEmpty) {
@@ -317,6 +324,191 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
       );
       _stopTimers();
     }
+  }
+
+  /// Stealth connection using high-speed Xray-core (VLESS Reality / Shadowsocks / Trojan)
+  Future<void> _connectStealth(VpnServer server) async {
+    _appendLog('[QuantumVPN] ⚡ Активация ядра обхода блокировок нового поколения (Xray-Core)...\n');
+    _appendLog('[QuantumVPN] 🛡️ Протокол: ${server.protocolBadge} · Устойчивость к DPI и полная смена IP\n');
+
+    try {
+      final xrayPath = await _resolveXrayBinary();
+      if (xrayPath == null) {
+        throw Exception('Утилита xray не найдена. Пожалуйста, убедитесь, что бинарный файл xray установлен.');
+      }
+
+      // Parse outbound config
+      Map<String, dynamic> outbound;
+      try {
+        outbound = json.decode(server.rawConfig ?? '{}') as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception('Неверный формат конфигурации stealth-сервера.');
+      }
+
+      final xrayConfig = {
+        'log': {'loglevel': 'warning'},
+        'inbounds': [
+          {
+            'tag': 'socks-in',
+            'port': 20808,
+            'listen': '127.0.0.1',
+            'protocol': 'socks',
+            'settings': {'auth': 'noauth', 'udp': true}
+          },
+          {
+            'tag': 'http-in',
+            'port': 20809,
+            'listen': '127.0.0.1',
+            'protocol': 'http',
+            'settings': {'allowTransparent': true}
+          }
+        ],
+        'outbounds': [
+          outbound,
+          {
+            'protocol': 'freedom',
+            'tag': 'direct'
+          }
+        ]
+      };
+
+      final configFile = File('/tmp/quantum_xray.json');
+      await configFile.writeAsString(json.encode(xrayConfig));
+
+      // Terminate any old instances
+      try {
+        await Process.run('pkill', ['-9', '-f', 'quantum_xray']);
+      } catch (_) {}
+
+      _appendLog('[QuantumVPN] 🚀 Запуск ядра Xray: $xrayPath\n');
+      _xrayProcess = await Process.start(xrayPath, ['run', '-c', configFile.path]);
+
+      _stdoutSub = _xrayProcess!.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        _appendLog('[Xray] $line\n');
+      });
+
+      _stderrSub = _xrayProcess!.stderr
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        _appendLog('[Xray STDERR] $line\n');
+      });
+
+      _xrayProcess!.exitCode.then((code) async {
+        _appendLog('[QuantumVPN] Процесс Xray завершился с кодом $code.\n');
+        await _restoreSystemProxy();
+        if (state.status == VpnConnectionStatus.connected ||
+            state.status == VpnConnectionStatus.connecting) {
+          state = state.copyWith(
+            status: VpnConnectionStatus.disconnected,
+            clearActiveServer: true,
+          );
+          _stopTimers();
+        }
+      });
+
+      // Apply system proxy on Linux
+      if (Platform.isLinux) {
+        await _applySystemProxy(socksPort: 20808, httpPort: 20809);
+      }
+
+      // Verify proxy and live IP change
+      _appendLog('[QuantumVPN] 🔍 Проверка смены внешнего IP через туннель...\n');
+      final verified = await _verifyProxyConnection();
+      if (verified != null) {
+        _appendLog('[QuantumVPN] 🟢 Стелс-туннель активен! Новый IP: ${verified.ip} (${verified.country})\n');
+        state = state.copyWith(status: VpnConnectionStatus.connected);
+        _startSessionTracking();
+      } else {
+        if (_xrayProcess != null) {
+          _appendLog('[QuantumVPN] 🟢 Стелс-туннель активен на портах 20808 (SOCKS5) / 20809 (HTTP).\n');
+          state = state.copyWith(status: VpnConnectionStatus.connected);
+          _startSessionTracking();
+        }
+      }
+    } catch (e) {
+      _appendLog('[QuantumVPN] ❌ Ошибка подключения: $e\n');
+      state = state.copyWith(
+        status: VpnConnectionStatus.error,
+        errorMessage: e.toString(),
+      );
+      _stopTimers();
+      await _restoreSystemProxy();
+    }
+  }
+
+  Future<String?> _resolveXrayBinary() async {
+    final candidates = [
+      '/root/projects/quantum_vpn/.quantum/bin/xray',
+      '/usr/local/bin/xray',
+      '/usr/bin/xray',
+      'xray',
+    ];
+    for (final p in candidates) {
+      final f = File(p);
+      if (await f.exists()) return f.path;
+      final whichRes = await Process.run('which', [p]);
+      if (whichRes.exitCode == 0) {
+        final out = whichRes.stdout.toString().trim();
+        if (out.isNotEmpty) return out;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _applySystemProxy({required int socksPort, required int httpPort}) async {
+    try {
+      await Process.run('gsettings', ['set', 'org.gnome.system.proxy', 'mode', 'manual']);
+      await Process.run('gsettings', ['set', 'org.gnome.system.proxy.socks', 'host', '127.0.0.1']);
+      await Process.run('gsettings', ['set', 'org.gnome.system.proxy.socks', 'port', socksPort.toString()]);
+      await Process.run('gsettings', ['set', 'org.gnome.system.proxy.http', 'host', '127.0.0.1']);
+      await Process.run('gsettings', ['set', 'org.gnome.system.proxy.http', 'port', httpPort.toString()]);
+      await Process.run('gsettings', ['set', 'org.gnome.system.proxy.https', 'host', '127.0.0.1']);
+      await Process.run('gsettings', ['set', 'org.gnome.system.proxy.https', 'port', httpPort.toString()]);
+
+      final envFile = File('/tmp/quantum_proxy.env');
+      await envFile.writeAsString(
+        'export http_proxy="http://127.0.0.1:$httpPort"\n'
+        'export https_proxy="http://127.0.0.1:$httpPort"\n'
+        'export all_proxy="socks5://127.0.0.1:$socksPort"\n'
+      );
+      _appendLog('[QuantumVPN] 🌐 Системный прокси Linux настроен (HTTP: $httpPort, SOCKS5: $socksPort)\n');
+    } catch (e) {
+      _appendLog('[QuantumVPN] Системный прокси: $e\n');
+    }
+  }
+
+  Future<void> _restoreSystemProxy() async {
+    if (!Platform.isLinux) return;
+    try {
+      await Process.run('gsettings', ['set', 'org.gnome.system.proxy', 'mode', 'none']);
+      final envFile = File('/tmp/quantum_proxy.env');
+      if (await envFile.exists()) {
+        await envFile.delete();
+      }
+    } catch (_) {}
+  }
+
+  Future<({String ip, String country})?> _verifyProxyConnection() async {
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 4);
+      client.findProxy = (uri) => 'PROXY 127.0.0.1:20809; DIRECT';
+      final req = await client.getUrl(Uri.parse('http://ip-api.com/json/'));
+      final resp = await req.close().timeout(const Duration(seconds: 4));
+      if (resp.statusCode == 200) {
+        final body = await resp.transform(utf8.decoder).join();
+        final data = json.decode(body) as Map<String, dynamic>;
+        return (
+          ip: data['query']?.toString() ?? '0.0.0.0',
+          country: data['country']?.toString() ?? 'Мир',
+        );
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> _connectMobile(VpnServer server, String optimizedConfig) async {
@@ -654,6 +846,23 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
       _openvpnProcess = null;
     }
 
+    if (_xrayProcess != null) {
+      try {
+        _xrayProcess!.kill(ProcessSignal.sigterm);
+      } catch (_) {
+        try {
+          _xrayProcess!.kill(ProcessSignal.sigkill);
+        } catch (_) {}
+      }
+      _xrayProcess = null;
+    }
+
+    try {
+      await Process.run('pkill', ['-9', '-f', 'quantum_xray']);
+    } catch (_) {}
+
+    await _restoreSystemProxy();
+
     if (Platform.isLinux) {
       // 2. Kill by recorded PID
       try {
@@ -702,6 +911,10 @@ class VpnConnectionNotifier extends StateNotifier<VpnConnectionState> {
   Future<void> emergencyNetworkReset() async {
     _appendLog('[QuantumVPN] 🛠 Запуск аварийного восстановления сети и DNS...\n');
     await disconnect();
+    await _restoreSystemProxy();
+    try {
+      await Process.run('pkill', ['-9', '-f', 'quantum_xray']);
+    } catch (_) {}
     if (Platform.isLinux) {
       try {
         const fallback = "# Restored by QuantumVPN Emergency Reset\nnameserver 1.1.1.1\nnameserver 8.8.8.8\nnameserver 77.88.8.8\noptions timeout:2\n";

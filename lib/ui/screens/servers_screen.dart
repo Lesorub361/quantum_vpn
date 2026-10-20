@@ -10,6 +10,7 @@ import '../../services/vpn_gate_service.dart';
 import '../../services/vpn_connection_service.dart';
 import '../../services/vpnbook_service.dart';
 import '../../services/riseup_vpn_service.dart';
+import '../../services/quantum_stealth_service.dart';
 import '../../services/speedtest_service.dart';
 import '../widgets/country_flag_widget.dart';
 import 'speedtest_screen.dart';
@@ -162,11 +163,13 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
     final riseupNotifier = ref.read(riseupVpnProvider.notifier);
     final vpnBookState = ref.watch(vpnBookProvider);
     final vpnBookNotifier = ref.read(vpnBookProvider.notifier);
+    final stealthState = ref.watch(quantumStealthProvider);
+    final stealthNotifier = ref.read(quantumStealthProvider.notifier);
     final connState = ref.watch(vpnConnectionProvider);
     final connNotifier = ref.read(vpnConnectionProvider.notifier);
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Бесплатные VPN Серверы'),
@@ -180,6 +183,8 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                 border: Border.all(color: QuantumVpnTheme.cardBorder),
               ),
               child: TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 indicator: BoxDecoration(
@@ -192,11 +197,15 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                 labelStyle: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold),
                 tabs: [
                   Tab(
+                    icon: const Icon(LucideIcons.zap, size: 15, color: QuantumVpnTheme.accentNeon),
+                    text: '⚡ Quantum Stealth (${stealthState.servers.length})',
+                  ),
+                  Tab(
                     icon: const Icon(LucideIcons.globe, size: 15),
                     text: 'VPN Gate (${gateState.servers.length})',
                   ),
                   Tab(
-                    icon: const Icon(LucideIcons.zap, size: 15, color: QuantumVpnTheme.accentNeon),
+                    icon: const Icon(LucideIcons.shield, size: 15, color: QuantumVpnTheme.primaryCyan),
                     text: 'Riseup (${riseupState.servers.length})',
                   ),
                   Tab(
@@ -218,7 +227,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
               },
             ),
             IconButton(
-              icon: (gateState.isLoading || riseupState.isLoading)
+              icon: (gateState.isLoading || riseupState.isLoading || stealthState.isLoading)
                   ? const SizedBox(
                       width: 18,
                       height: 18,
@@ -227,6 +236,7 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
                   : const Icon(LucideIcons.refresh_cw, size: 18, color: QuantumVpnTheme.primaryCyan),
               tooltip: 'Обновить',
               onPressed: () {
+                stealthNotifier.fetchLiveServers();
                 gateNotifier.refreshServers();
                 riseupNotifier.fetchLiveGateways();
                 vpnBookNotifier.fetchLatestCredentials();
@@ -236,6 +246,9 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
         ),
         body: TabBarView(
           children: [
+            // ── Tab 0: Quantum Stealth (Xray Core) ───────────────────────────
+            _buildStealthTab(stealthState, stealthNotifier, connState, connNotifier),
+
             // ── Tab 1: VPN Gate ──────────────────────────────────────────────
             _buildVpnGateTab(gateState, gateNotifier, connState, connNotifier),
 
@@ -247,6 +260,400 @@ class _ServersScreenState extends ConsumerState<ServersScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  PopupMenuItem<String> _popupProtoItem(String proto, String title, String current) {
+    final isSelected = proto == current;
+    return PopupMenuItem<String>(
+      value: proto,
+      child: Row(
+        children: [
+          if (isSelected)
+            const Icon(LucideIcons.check, size: 14, color: QuantumVpnTheme.accentNeon)
+          else
+            const SizedBox(width: 14),
+          const SizedBox(width: 8),
+          Text(title, style: TextStyle(color: isSelected ? QuantumVpnTheme.accentNeon : Colors.white)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStealthTab(
+    QuantumStealthState stealthState,
+    QuantumStealthNotifier stealthNotifier,
+    VpnConnectionState connState,
+    VpnConnectionNotifier connNotifier,
+  ) {
+    final filtered = stealthState.filteredServers;
+    final countries = stealthState.availableCountries;
+
+    return Column(
+      children: [
+        // Search & Filter Bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
+                  onChanged: (text) => stealthNotifier.setSearchQuery(text),
+                  decoration: InputDecoration(
+                    hintText: 'Поиск (страна, IP, VLESS, Shadowsocks)...',
+                    hintStyle: GoogleFonts.inter(color: Colors.white30, fontSize: 12),
+                    prefixIcon: const Icon(LucideIcons.search, size: 16, color: Colors.white54),
+                    filled: true,
+                    fillColor: QuantumVpnTheme.card,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: QuantumVpnTheme.cardBorder),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: QuantumVpnTheme.cardBorder),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              PopupMenuButton<String>(
+                icon: Container(
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: QuantumVpnTheme.card,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: QuantumVpnTheme.cardBorder),
+                  ),
+                  child: const Icon(LucideIcons.funnel, size: 16, color: QuantumVpnTheme.accentNeon),
+                ),
+                tooltip: 'Фильтр протокола',
+                onSelected: (proto) => stealthNotifier.setProtocolFilter(proto),
+                itemBuilder: (context) => [
+                  _popupProtoItem('all', '🌐 Все протоколы', stealthState.selectedProtocol),
+                  _popupProtoItem('vless', '🛡️ VLESS Reality (DPI-Immune)', stealthState.selectedProtocol),
+                  _popupProtoItem('shadowsocks', '⚡ Shadowsocks 2022', stealthState.selectedProtocol),
+                  _popupProtoItem('trojan', '🔒 Trojan TLS', stealthState.selectedProtocol),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // Protocol & Country Filter Chips
+        SizedBox(
+          height: 38,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  avatar: const Icon(LucideIcons.shield_check, size: 13, color: QuantumVpnTheme.primaryCyan),
+                  label: const Text('🛡️ VLESS Reality', style: TextStyle(fontSize: 11)),
+                  selected: stealthState.selectedProtocol == 'vless',
+                  selectedColor: QuantumVpnTheme.primaryCyan,
+                  labelStyle: TextStyle(
+                    color: stealthState.selectedProtocol == 'vless' ? Colors.black : Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  backgroundColor: QuantumVpnTheme.card,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  side: BorderSide(
+                    color: stealthState.selectedProtocol == 'vless' ? QuantumVpnTheme.primaryCyan : QuantumVpnTheme.cardBorder,
+                  ),
+                  onSelected: (val) => stealthNotifier.setProtocolFilter(val ? 'vless' : 'all'),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  avatar: const Icon(LucideIcons.zap, size: 13, color: QuantumVpnTheme.accentNeon),
+                  label: const Text('⚡ Shadowsocks', style: TextStyle(fontSize: 11)),
+                  selected: stealthState.selectedProtocol == 'shadowsocks',
+                  selectedColor: QuantumVpnTheme.accentNeon,
+                  labelStyle: TextStyle(
+                    color: stealthState.selectedProtocol == 'shadowsocks' ? Colors.black : Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  backgroundColor: QuantumVpnTheme.card,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  side: BorderSide(
+                    color: stealthState.selectedProtocol == 'shadowsocks' ? QuantumVpnTheme.accentNeon : QuantumVpnTheme.cardBorder,
+                  ),
+                  onSelected: (val) => stealthNotifier.setProtocolFilter(val ? 'shadowsocks' : 'all'),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  label: const Text('Все страны', style: TextStyle(fontSize: 11)),
+                  selected: stealthState.selectedCountry == 'all',
+                  selectedColor: QuantumVpnTheme.primaryCyan,
+                  labelStyle: TextStyle(
+                    color: stealthState.selectedCountry == 'all' ? Colors.black : Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  backgroundColor: QuantumVpnTheme.card,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  side: BorderSide(
+                    color: stealthState.selectedCountry == 'all'
+                        ? QuantumVpnTheme.primaryCyan
+                        : QuantumVpnTheme.cardBorder,
+                  ),
+                  onSelected: (_) => stealthNotifier.setCountryFilter('all'),
+                ),
+              ),
+              ...countries.where((c) => c != 'all').map((c) {
+                final isSel = stealthState.selectedCountry == c;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: FilterChip(
+                    avatar: CountryFlagWidget(countryCode: c, width: 18, height: 12),
+                    label: Text(c, style: const TextStyle(fontSize: 11)),
+                    selected: isSel,
+                    selectedColor: QuantumVpnTheme.primaryCyan,
+                    labelStyle: TextStyle(
+                      color: isSel ? Colors.black : Colors.white70,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    backgroundColor: QuantumVpnTheme.card,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    side: BorderSide(
+                      color: isSel ? QuantumVpnTheme.primaryCyan : QuantumVpnTheme.cardBorder,
+                    ),
+                    onSelected: (_) => stealthNotifier.setCountryFilter(isSel ? 'all' : c),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 6),
+
+        // Server List
+        Expanded(
+          child: stealthState.isLoading && stealthState.servers.isEmpty
+              ? const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(color: QuantumVpnTheme.primaryCyan),
+                      SizedBox(height: 16),
+                      Text('Загрузка серверов нового поколения (Xray Core)...', style: TextStyle(color: Colors.white60)),
+                    ],
+                  ),
+                )
+              : filtered.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(LucideIcons.shield_alert, size: 48, color: Colors.white24),
+                          const SizedBox(height: 12),
+                          Text(
+                            stealthState.errorMessage ?? 'Серверы не найдены',
+                            style: const TextStyle(color: Colors.white60),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: () => stealthNotifier.fetchLiveServers(),
+                            icon: const Icon(LucideIcons.refresh_cw, size: 14),
+                            label: const Text('Обновить серверы'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: QuantumVpnTheme.primaryCyan,
+                              foregroundColor: Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: filtered.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final server = filtered[index];
+                        final isCurrentlyActive = connState.activeServer?.ip == server.ip &&
+                            connState.activeServer?.protocolType == server.protocolType;
+                        final isConnected = connState.isConnected && isCurrentlyActive;
+                        final isConnecting = connState.isConnecting && isCurrentlyActive;
+
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: QuantumVpnTheme.card,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: isConnected
+                                  ? QuantumVpnTheme.successGreen
+                                  : isConnecting
+                                      ? QuantumVpnTheme.primaryCyan
+                                      : QuantumVpnTheme.cardBorder,
+                              width: (isConnected || isConnecting) ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                CountryFlagWidget(countryCode: server.countryShort, width: 34, height: 24),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              '${server.countryLong} (${server.countryShort})',
+                                              style: GoogleFonts.inter(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: server.protocolType == 'vless'
+                                                  ? QuantumVpnTheme.primaryCyan.withValues(alpha: 0.15)
+                                                  : QuantumVpnTheme.accentNeon.withValues(alpha: 0.15),
+                                              borderRadius: BorderRadius.circular(6),
+                                              border: Border.all(
+                                                color: server.protocolType == 'vless'
+                                                    ? QuantumVpnTheme.primaryCyan.withValues(alpha: 0.5)
+                                                    : QuantumVpnTheme.accentNeon.withValues(alpha: 0.5),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              server.protocolBadge,
+                                              style: GoogleFonts.inter(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                                color: server.protocolType == 'vless'
+                                                    ? QuantumVpnTheme.primaryCyan
+                                                    : QuantumVpnTheme.accentNeon,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            '${server.ip}:${server.port ?? 443}',
+                                            style: GoogleFonts.firaCode(fontSize: 11, color: Colors.white54),
+                                          ),
+                                          if (server.sni != null && server.sni!.isNotEmpty) ...[
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '• SNI: ${server.sni}',
+                                              style: GoogleFonts.inter(fontSize: 10, color: Colors.white38),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          GestureDetector(
+                                            onTap: () => _testServerLatency(server.ip, server.port ?? 443),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withValues(alpha: 0.05),
+                                                borderRadius: BorderRadius.circular(4),
+                                                border: Border.all(color: Colors.white12),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (_testingHosts.contains(server.ip))
+                                                    const SizedBox(
+                                                      width: 10,
+                                                      height: 10,
+                                                      child: CircularProgressIndicator(strokeWidth: 1.5, color: QuantumVpnTheme.primaryCyan),
+                                                    )
+                                                  else
+                                                    const Icon(LucideIcons.activity, size: 10, color: QuantumVpnTheme.primaryCyan),
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    _testedPings[server.ip] != null
+                                                        ? '${_testedPings[server.ip]} ms'
+                                                        : '${server.ping} ms (тест)',
+                                                    style: GoogleFonts.inter(
+                                                      fontSize: 10,
+                                                      color: (_testedPings[server.ip] != null && _testedPings[server.ip]! < 100)
+                                                          ? QuantumVpnTheme.successGreen
+                                                          : QuantumVpnTheme.primaryCyan,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          const Icon(LucideIcons.shield_check, size: 11, color: QuantumVpnTheme.accentNeon),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            'DPI Bypass 100%',
+                                            style: GoogleFonts.inter(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                ElevatedButton(
+                                  onPressed: isConnecting
+                                      ? null
+                                      : () async {
+                                          if (isConnected) {
+                                            await connNotifier.disconnect();
+                                          } else {
+                                            await connNotifier.connect(server);
+                                            widget.onConnectedNav();
+                                          }
+                                        },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: isConnected
+                                        ? QuantumVpnTheme.dangerRed
+                                        : QuantumVpnTheme.primaryCyan,
+                                    foregroundColor: isConnected ? Colors.white : Colors.black,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  child: isConnecting
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                                        )
+                                      : Text(
+                                          isConnected ? 'Отключить' : 'Старт',
+                                          style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold),
+                                        ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 

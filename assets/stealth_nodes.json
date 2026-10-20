@@ -1,0 +1,507 @@
+[
+  {
+    "protocol": "shadowsocks",
+    "server": "185.213.23.63",
+    "port": 990,
+    "ping": 708,
+    "ip": "185.213.23.63",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "185.213.23.63",
+            "port": 990,
+            "method": "chacha20-ietf-poly1305",
+            "password": "ARgvGZywA+gacgGV26Bvmu05+wZmRW/j+AdU+Z8Bt44="
+          }
+        ]
+      }
+    },
+    "countryShort": "NO",
+    "countryLong": "Norway"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "209.46.102.22",
+    "port": 8388,
+    "ping": 663,
+    "ip": "209.46.102.22",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "209.46.102.22",
+            "port": 8388,
+            "method": "chacha20-ietf-poly1305",
+            "password": "1hhrqrokj3ag"
+          }
+        ]
+      }
+    },
+    "countryShort": "DE",
+    "countryLong": "Germany"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "193.29.139.234",
+    "port": 8080,
+    "ping": 637,
+    "ip": "193.29.139.234",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "193.29.139.234",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "103.11.76.248",
+    "port": 28679,
+    "ping": 1097,
+    "ip": "103.11.76.248",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "103.11.76.248",
+            "port": 28679,
+            "method": "aes-256-gcm",
+            "password": "u!iO"
+          }
+        ]
+      }
+    },
+    "countryShort": "US",
+    "countryLong": "United States"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.54",
+    "port": 8080,
+    "ping": 477,
+    "ip": "193.29.139.225",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.54",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.180",
+    "port": 8080,
+    "ping": 475,
+    "ip": "193.29.139.147",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.180",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.176",
+    "port": 8080,
+    "ping": 525,
+    "ip": "193.29.139.212",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.176",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.199",
+    "port": 8080,
+    "ping": 599,
+    "ip": "193.29.139.184",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.199",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.82",
+    "port": 8080,
+    "ping": 500,
+    "ip": "193.29.139.148",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.82",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.170",
+    "port": 443,
+    "ping": 637,
+    "ip": "193.29.139.172",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.170",
+            "port": 443,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.202",
+    "port": 8080,
+    "ping": 478,
+    "ip": "193.29.139.169",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.202",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.216",
+    "port": 8080,
+    "ping": 511,
+    "ip": "193.29.139.139",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.216",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.61",
+    "port": 8080,
+    "ping": 508,
+    "ip": "193.29.139.196",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.61",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.7",
+    "port": 8080,
+    "ping": 573,
+    "ip": "193.29.139.210",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.7",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "shadowsocks",
+    "server": "82.38.31.11",
+    "port": 8080,
+    "ping": 799,
+    "ip": "193.29.139.188",
+    "outbound": {
+      "protocol": "shadowsocks",
+      "tag": "proxy",
+      "settings": {
+        "servers": [
+          {
+            "address": "82.38.31.11",
+            "port": 8080,
+            "method": "rc4-md5",
+            "password": "14fFPrbezE3HDZzsMOr6"
+          }
+        ]
+      }
+    },
+    "countryShort": "NL",
+    "countryLong": "The Netherlands"
+  },
+  {
+    "protocol": "vless",
+    "server": "150.241.101.80",
+    "port": 8443,
+    "ping": 1339,
+    "ip": "150.241.101.80",
+    "sni": "yandex.net",
+    "outbound": {
+      "protocol": "vless",
+      "tag": "proxy",
+      "settings": {
+        "vnext": [
+          {
+            "address": "150.241.101.80",
+            "port": 8443,
+            "users": [
+              {
+                "id": "2dff7881-2292-411a-853f-ef1450a80e1a",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "yandex.net",
+          "publicKey": "uO-UjR6zO44l50kUqN-91x09sJ092zZf0GzT722QeFw",
+          "fingerprint": "chrome",
+          "shortId": "7c86729a43a054ec",
+          "spiderX": ""
+        }
+      }
+    },
+    "countryShort": "DE",
+    "countryLong": "Germany"
+  },
+  {
+    "protocol": "vless",
+    "server": "154.29.149.140",
+    "port": 41705,
+    "ping": 1747,
+    "ip": "166.0.19.130",
+    "sni": "us1p1.xn--ghq880n3na965a.com",
+    "outbound": {
+      "protocol": "vless",
+      "tag": "proxy",
+      "settings": {
+        "vnext": [
+          {
+            "address": "154.29.149.140",
+            "port": 41705,
+            "users": [
+              {
+                "id": "c7b50821-6679-450f-a9cb-b0eb9fe2a3fb",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "us1p1.xn--ghq880n3na965a.com",
+          "publicKey": "tBvlo8F8hKRXSK-EHRAfzEH-x3e4uvheGloO-9bPKx4",
+          "fingerprint": "chrome",
+          "shortId": "70ab6d813e",
+          "spiderX": ""
+        }
+      }
+    },
+    "countryShort": "US",
+    "countryLong": "United States"
+  },
+  {
+    "protocol": "vless",
+    "server": "150.241.101.17",
+    "port": 8443,
+    "ping": 954,
+    "ip": "150.241.101.17",
+    "sni": "yandex.net",
+    "outbound": {
+      "protocol": "vless",
+      "tag": "proxy",
+      "settings": {
+        "vnext": [
+          {
+            "address": "150.241.101.17",
+            "port": 8443,
+            "users": [
+              {
+                "id": "2dff7881-2292-411a-853f-ef1450a80e1a",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "yandex.net",
+          "publicKey": "uO-UjR6zO44l50kUqN-91x09sJ092zZf0GzT722QeFw",
+          "fingerprint": "chrome",
+          "shortId": "7c86729a43a054ec",
+          "spiderX": ""
+        }
+      }
+    },
+    "countryShort": "DE",
+    "countryLong": "Germany"
+  },
+  {
+    "protocol": "vless",
+    "server": "84.32.109.20",
+    "port": 443,
+    "ping": 1058,
+    "ip": "84.32.109.20",
+    "sni": "litv.nztvpn.com",
+    "outbound": {
+      "protocol": "vless",
+      "tag": "proxy",
+      "settings": {
+        "vnext": [
+          {
+            "address": "84.32.109.20",
+            "port": 443,
+            "users": [
+              {
+                "id": "6fa84a32-15f5-46aa-acda-9669527ecb2a",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "litv.nztvpn.com",
+          "publicKey": "L8zX_g6f7N-h1lT_H3NlT8bL7pQ-H8cQ_tP5rL_qA3A",
+          "fingerprint": "chrome",
+          "shortId": "",
+          "spiderX": ""
+        }
+      }
+    },
+    "countryShort": "LT",
+    "countryLong": "Lithuania"
+  }
+]

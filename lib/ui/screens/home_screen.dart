@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../services/vpn_gate_service.dart';
 import '../../services/vpn_connection_service.dart';
+import '../../services/quantum_stealth_service.dart';
 import '../../services/speedtest_service.dart';
 import '../widgets/country_flag_widget.dart';
 import 'speedtest_screen.dart';
@@ -45,8 +46,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   @override
   Widget build(BuildContext context) {
     final gateState = ref.watch(vpnGateProvider);
+    final stealthState = ref.watch(quantumStealthProvider);
     final connState = ref.watch(vpnConnectionProvider);
-    final activeServer = connState.activeServer ?? gateState.selectedServer;
+    final activeServer = connState.activeServer ??
+        gateState.selectedServer ??
+        (stealthState.servers.isNotEmpty ? stealthState.servers.first : null);
 
     final isConnected = connState.isConnected;
     final isConnecting = connState.isConnecting;
@@ -388,13 +392,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              activeServer.countryLong,
-                              style: GoogleFonts.inter(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
+                            Row(
+                              children: [
+                                Text(
+                                  activeServer.countryLong,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: activeServer.isStealthProtocol
+                                        ? QuantumVpnTheme.accentNeon.withValues(alpha: 0.15)
+                                        : QuantumVpnTheme.primaryCyan.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: activeServer.isStealthProtocol
+                                          ? QuantumVpnTheme.accentNeon.withValues(alpha: 0.5)
+                                          : QuantumVpnTheme.primaryCyan.withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    activeServer.protocolBadge,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: activeServer.isStealthProtocol
+                                          ? QuantumVpnTheme.accentNeon
+                                          : QuantumVpnTheme.primaryCyan,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                             const SizedBox(height: 2),
                             Text(

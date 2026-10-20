@@ -18,6 +18,10 @@ class VpnServer {
   final String ovpnConfigBase64;
   final String? username;
   final String? password;
+  final String protocolType; // 'openvpn', 'shadowsocks', 'vless', 'trojan'
+  final String? rawConfig;
+  final int? port;
+  final String? sni;
 
   const VpnServer({
     required this.hostName,
@@ -37,6 +41,10 @@ class VpnServer {
     required this.ovpnConfigBase64,
     this.username,
     this.password,
+    this.protocolType = 'openvpn',
+    this.rawConfig,
+    this.port,
+    this.sni,
   });
 
   /// Decodes base64 OpenVPN configuration into plain string
@@ -69,6 +77,27 @@ class VpnServer {
     final first = code.codeUnitAt(0) - 0x41 + 0x1F1E6;
     final second = code.codeUnitAt(1) - 0x41 + 0x1F1E6;
     return String.fromCharCode(first) + String.fromCharCode(second);
+  }
+
+  /// Whether this server uses modern stealth bypass (Xray / VLESS / Shadowsocks / Trojan)
+  bool get isStealthProtocol => protocolType != 'openvpn';
+
+  /// Protocol Display Badge
+  String get protocolBadge {
+    switch (protocolType.toLowerCase()) {
+      case 'vless':
+        return 'VLESS Reality';
+      case 'shadowsocks':
+      case 'ss':
+        return 'Shadowsocks';
+      case 'trojan':
+        return 'Trojan';
+      case 'hysteria2':
+      case 'hy2':
+        return 'Hysteria 2';
+      default:
+        return 'OpenVPN';
+    }
   }
 
   /// Parse single line from VPN Gate CSV API
